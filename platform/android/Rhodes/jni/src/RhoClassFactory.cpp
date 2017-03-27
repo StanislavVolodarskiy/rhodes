@@ -24,12 +24,13 @@
 * http://rhomobile.com
 *------------------------------------------------------------------------*/
 
-#include <net/CURLNetRequest.h>
 #include <common/PosixThreadImpl.h>
 
 #include "rhodes/RhoClassFactory.h"
 #include "rhodes/sslimpl.h"
 #include "rhodes/rhocryptimpl.h"
+
+#include <rhodes/JNINetRequest.h>
 
 static rho::common::CRhoClassFactory g_rhoClassFactory;
 rho::common::IRhoClassFactory* rho_get_RhoClassFactory()
@@ -44,7 +45,7 @@ namespace common
 
 net::INetRequestImpl* CRhoClassFactory::createNetRequestImpl()
 {
-    return new net::CURLNetRequest();
+    return new net::JNINetRequest();
 }
 
 IRhoThreadImpl *CRhoClassFactory::createThreadImpl()
