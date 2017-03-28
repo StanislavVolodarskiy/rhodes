@@ -48,7 +48,7 @@ INetResponse* JNINetRequest::doRequest(
     jhstring method_j = rho_cast<jstring>(env, method);
     jhstring url_j = rho_cast<jstring>(env, strUrl);
     jhstring body_j = rho_cast<jstring>(env, strBody);
-        
+
     jboolean result = env->CallBooleanMethod(
         net_request,
         do_request,

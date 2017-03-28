@@ -4,7 +4,7 @@ import java.util.Map;
 
 import com.rhomobile.rhodes.Logger;
 
-public class NetRequest 
+public class NetRequest
 {
     private static final String TAG = NetRequest.class.getSimpleName();
     private static void ERROR(String    msg) { Logger.E(TAG, msg); }

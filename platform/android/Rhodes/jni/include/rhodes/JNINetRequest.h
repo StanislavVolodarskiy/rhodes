@@ -13,10 +13,10 @@ namespace net
 class JNINetRequest : public INetRequestImpl
 {
     DEFINE_LOGCLASS;
-    
+
 public:
     JNINetRequest();
-    
+
     virtual ~JNINetRequest();
 
     virtual INetResponse* doRequest(
@@ -45,7 +45,7 @@ public:
     virtual void setSslVerifyPeer(boolean mode);
 
     virtual INetResponse* createEmptyNetResponse();
-    
+
     virtual void setCallback(INetRequestCallback*);
 
 private:
