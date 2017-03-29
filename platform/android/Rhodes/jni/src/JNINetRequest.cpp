@@ -2,6 +2,7 @@
 #include "rhodes/JNINetRequest.h"
 #include "net/CURLNetRequest.h"
 #include "logging/RhoLog.h"
+#include "common/RhoStd.h"
 #include "common/RhoFile.h"
 #include "common/RhodesApp.h"
 #include "common/RhoConf.h"
@@ -9,8 +10,45 @@
 #undef DEFAULT_LOGCATEGORY
 #define DEFAULT_LOGCATEGORY "Net"
 
+static jobject call_net_request_do_request(
+    const char* method,
+    const rho::String& url,
+    const rho::String& body
+);
+static int call_net_response_response_code(jobject response);
+static rho::String call_net_response_body(jobject response);
+
+
 namespace rho {
 namespace net {
+
+class JNINetResponse : public INetResponse
+{
+public:
+    JNINetResponse(
+        const String& data_,
+              int     resp_code_,
+        const String& cookies_,
+        const String& error_message_
+    )
+    : data(data_), resp_code(resp_code_), cookies(cookies_), error_message(error_message_)
+    {}
+
+    virtual             ~JNINetResponse ()                   {}
+    virtual const char*  getCharData    ()                   { return data.c_str(); }
+    virtual unsigned int getDataSize    ()                   { return data.size(); }
+    virtual int          getRespCode    ()                   { return resp_code; }
+    virtual String       getCookies     ()                   { return cookies; }
+    virtual String       getErrorMessage()                   { return error_message; }
+    virtual void         setCharData    (const char* szData) { data = szData; }
+
+private:
+	String data;
+    int    resp_code;
+    String cookies;
+    String error_message;
+};
+
 
 class JNINetRequest::Impl : public CURLNetRequest
 {
@@ -32,36 +70,23 @@ INetResponse* JNINetRequest::doRequest(
     const char* method,
     const String& strUrl,
     const String& strBody,
-    IRhoSession* oSession,
-    Hashtable<String,String>* pHeaders
+    IRhoSession* oSession, // TODO: support session
+    Hashtable<String, String>* pHeaders // TODO: support headers
 )
 {
     RAWLOG_INFO("UGU doRequest");
 
-    JNIEnv *env = jnienv();
-    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_NETREQUEST);
-    jmethodID constructor = getJNIClassMethod(env, class_, "<init>", "()V");
-    jmethodID do_request = getJNIClassMethod(env, class_, "doRequest", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Z");
+    jobject response = call_net_request_do_request(method, strUrl, strBody);
+    int response_code = call_net_response_response_code(response);
+    String body = call_net_response_body(response);
 
-    jobject net_request = env->NewObject(class_, constructor);
-
-    jhstring method_j = rho_cast<jstring>(env, method);
-    jhstring url_j = rho_cast<jstring>(env, strUrl);
-    jhstring body_j = rho_cast<jstring>(env, strBody);
-
-    jboolean result = env->CallBooleanMethod(
-        net_request,
-        do_request,
-        method_j.get(),
-        url_j.get(),
-        body_j.get(),
-        null
+    return new JNINetResponse(
+        body,
+        response_code,
+        "", // TODO: support cookies
+        "" // error message is not supported
     );
-
-    RAWLOG_INFO((result) ? "UGU IS true" : "UGU IS false");
-    RAWLOG_INFO("AGA doRequest");
-
-    return impl->doRequest(method, strUrl, strBody, oSession, pHeaders);
+    // return impl->doRequest(method, strUrl, strBody, oSession, pHeaders);
 }
 
 INetResponse* JNINetRequest::pullFile(
@@ -119,34 +144,57 @@ void JNINetRequest::setCallback(INetRequestCallback* cb)
 } // namespace net
 } // namespace rho
 
-void call_jni()
+
+jobject call_net_request_do_request(
+    const char*        method,
+    const rho::String& url,
+    const rho::String& body
+)
 {
     JNIEnv *env = jnienv();
-    if (env == NULL) {
-        return;
-    }
 
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_NETREQUEST);
     jmethodID constructor = getJNIClassMethod(env, class_, "<init>", "()V");
-    jmethodID check = getJNIClassMethod(env, class_, "doRequest", "(Ljava/lang/String;)Z");
-    if (check == NULL) {
-        return;
-    }
+    jmethodID do_request = getJNIClassMethod(
+        env,
+        class_,
+        "doRequest",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Lcom/rhomobile/rhodes/NetResponse;"
+    );
 
-    RAWLOG_INFO("MARK 4");
+
     jobject net_request = env->NewObject(class_, constructor);
-    if (net_request == NULL) {
-        return;
-    }
 
-    RAWLOG_INFO("MARK 5");
-    jhstring ugu = rho_cast<jstring>(env, "UGU");
-    jboolean result = env->CallBooleanMethod(net_request, check, ugu.get());
-    RAWLOG_INFO((result) ? "UGU IS true" : "UGU IS false");
-    jhstring ugug = rho_cast<jstring>(env, "UGUG");
-    result = env->CallBooleanMethod(net_request, check, ugug.get());
-    RAWLOG_INFO((result) ? "UGUG IS true" : "UGUG IS false");
+    jhstring method_j = rho_cast<jstring>(env, method);
+    jhstring url_j = rho_cast<jstring>(env, url);
+    jhstring body_j = rho_cast<jstring>(env, body);
 
-    RAWLOG_INFO("MARK 6");
-    RAWLOG_INFO("MARK 7");
+    return env->CallObjectMethod(
+        net_request,
+        do_request,
+        method_j.get(),
+        url_j.get(),
+        body_j.get(),
+        null // TODO: support headers
+    );
+}
+
+int call_net_response_response_code(jobject response)
+{
+    JNIEnv *env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_NETRESPONSE);
+    jmethodID response_code = getJNIClassMethod(env, class_, "responseCode", "()I");
+
+    return env->CallIntMethod(response, response_code);
+}
+
+rho::String call_net_response_body(jobject response)
+{
+    JNIEnv *env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_NETRESPONSE);
+    jmethodID method = getJNIClassMethod(env, class_, "body", "()Ljava/lang/String;");
+    jhstring body = static_cast<jstring>(env->CallObjectMethod(response, method));
+    return rho_cast<rho::String>(env, body);
 }

@@ -11,6 +11,7 @@ platform/android/Rhodes/src/com/rhomobile/rhodes/PushContract.java
 platform/android/Rhodes/src/com/rhomobile/rhodes/RhoConf.java
 platform/android/Rhodes/src/com/rhomobile/rhodes/RhoCryptImpl.java
 platform/android/Rhodes/src/com/rhomobile/rhodes/NetRequest.java
+platform/android/Rhodes/src/com/rhomobile/rhodes/NetResponse.java
 platform/android/Rhodes/src/com/rhomobile/rhodes/RhoLogConf.java
 platform/android/Rhodes/src/com/rhomobile/rhodes/RhoMenu.java
 platform/android/Rhodes/src/com/rhomobile/rhodes/RhodesActivity.java
