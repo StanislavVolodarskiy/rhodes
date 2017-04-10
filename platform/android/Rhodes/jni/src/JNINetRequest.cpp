@@ -13,10 +13,12 @@
 static jobject call_net_request_do_request(
     const char* method,
     const rho::String& url,
-    const rho::String& body
+    const rho::String& body,
+    const rho::Hashtable<rho::String, rho::String>* pHeaders
 );
 static int call_net_response_response_code(jobject response);
 static rho::String call_net_response_body(jobject response);
+static jobject new_hashmap(const rho::Hashtable<rho::String, rho::String>& headers);
 
 
 namespace rho {
@@ -71,12 +73,12 @@ INetResponse* JNINetRequest::doRequest(
     const String& strUrl,
     const String& strBody,
     IRhoSession* oSession, // TODO: support session
-    Hashtable<String, String>* pHeaders // TODO: support headers
+    Hashtable<String, String>* pHeaders
 )
 {
     RAWLOG_INFO("UGU doRequest");
 
-    jobject response = call_net_request_do_request(method, strUrl, strBody);
+    jobject response = call_net_request_do_request(method, strUrl, strBody, pHeaders);
     int response_code = call_net_response_response_code(response);
     String body = call_net_response_body(response);
 
@@ -148,7 +150,8 @@ void JNINetRequest::setCallback(INetRequestCallback* cb)
 jobject call_net_request_do_request(
     const char*        method,
     const rho::String& url,
-    const rho::String& body
+    const rho::String& body,
+    const rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
     JNIEnv *env = jnienv();
@@ -168,6 +171,7 @@ jobject call_net_request_do_request(
     jhstring method_j = rho_cast<jstring>(env, method);
     jhstring url_j = rho_cast<jstring>(env, url);
     jhstring body_j = rho_cast<jstring>(env, body);
+    jobject headers = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
 
     return env->CallObjectMethod(
         net_request,
@@ -175,8 +179,28 @@ jobject call_net_request_do_request(
         method_j.get(),
         url_j.get(),
         body_j.get(),
-        null // TODO: support headers
+        headers
     );
+}
+
+jobject new_hashmap(const rho::Hashtable<rho::String, rho::String>& headers)
+{
+    JNIEnv *env = jnienv();
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_HASHMAP);
+    jmethodID constructor = getJNIClassMethod(env, class_, "<init>", "()V");
+    jmethodID put = getJNIClassMethod(env, class_, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    jobject hashmap = env->NewObject(class_, constructor);
+
+    for (
+        rho::Hashtable<rho::String, rho::String>::const_iterator it = headers.begin();
+        it != headers.end();
+        ++it
+    ) {
+        jhstring key = rho_cast<jstring>(it->first);
+        jhstring value = rho_cast<jstring>(it->second);
+        env->CallObjectMethod(hashmap, put, key.get(), value.get());
+    }
+    return hashmap;
 }
 
 int call_net_response_response_code(jobject response)
