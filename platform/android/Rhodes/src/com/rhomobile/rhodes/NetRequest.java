@@ -118,15 +118,16 @@ public class NetRequest
                 connection.disconnect();
             }
         } catch (IOException e) {
-            INFO("MARK 8");
+            INFO("exception is [" + e.getMessage() + "]");
             int response_code = -1;
             if (connection != null) {
                 try {
                     response_code = connection.getResponseCode();
                 } catch (IOException ee) {
+                    INFO("response code exception is [" + ee.getMessage() + "]");
                 }
             }
-            INFO("MARK 9");
+            INFO("response code is " + response_code);
             return new NetResponse(response_code, null);
         }
     }
