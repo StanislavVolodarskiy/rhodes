@@ -81,29 +81,29 @@ public class NetRequest
                 connection.setRequestMethod(method);
 
                 INFO("MARK 4");
-                if ("POST".equals(method) && body != null) {
-                    INFO("MARK 4.1");
-                    OutputStream os = connection.getOutputStream();
-                    INFO("MARK 4.2");
-                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"));
-                    INFO("MARK 4.3");
-                    writer.write(body);
-                    INFO("MARK 4.4");
-                    writer.flush();
-                    INFO("MARK 4.5");
-                    writer.close();
-                    INFO("MARK 4.6");
-                    os.close();
-                    INFO("MARK 4.7");
-                }
-
-                INFO("MARK 5");
                 if (headers != null) {
                     INFO("headers size is " + headers.size());
                     for (Map.Entry<String, String> e : headers.entrySet()) {
                         INFO("header '" + e.getKey() + "': '" + e.getValue() + "'");
                         connection.setRequestProperty(e.getKey(), e.getValue());
                     }
+                }
+
+                INFO("MARK 5");
+                if ("POST".equals(method) && body != null) {
+                    INFO("MARK 5.1");
+                    OutputStream os = connection.getOutputStream();
+                    INFO("MARK 5.2");
+                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"));
+                    INFO("MARK 5.3");
+                    writer.write(body);
+                    INFO("MARK 5.4");
+                    writer.flush();
+                    INFO("MARK 5.5");
+                    writer.close();
+                    INFO("MARK 5.6");
+                    os.close();
+                    INFO("MARK 5.7");
                 }
 
                 INFO("MARK 6");
