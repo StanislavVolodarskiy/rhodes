@@ -128,9 +128,9 @@ rho::net::CNetResponseWrapper CNetRequestWrapper::pushData(const String& strUrl,
     return doRequest("POST",strUrl,strBody,oSession,null);
 }
 
-rho::net::CNetResponseWrapper CNetRequestWrapper::pullCookies(const String& strUrl, const String& strBody, IRhoSession* oSession)
+rho::net::CNetResponseWrapper CNetRequestWrapper::pullCookies(const String& strUrl, const String& strBody, IRhoSession* oSession, Hashtable<String, String>* pHeaders)
 {
-    rho::net::CNetResponseWrapper oResp = doRequest("POST", strUrl, strBody, oSession, null );
+    rho::net::CNetResponseWrapper oResp = doRequest("POST", strUrl, strBody, oSession, pHeaders);
     if ( oResp.getRespCode() == 200 )
         oResp.setCharData(oResp.getCookies().c_str());
 		

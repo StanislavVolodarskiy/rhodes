@@ -920,7 +920,7 @@ namespace rho.sync
 		    
 		        try{
 				
-			        resp = getNet().pullCookies( getProtocol().getLoginUrl(), getProtocol().getLoginBody(name, password), this );
+			        resp = getNet().pullCookies( getProtocol().getLoginUrl(), getProtocol().getLoginBody(name, password), this, getProtocol().getLoginHeaders());
 			        int nErrCode = RhoAppAdapter.getErrorFromResponse(resp);
 			        if ( nErrCode != RhoAppAdapter.ERR_NONE )
 			        {

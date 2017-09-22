@@ -160,8 +160,8 @@ public:
 
     rho::net::CNetResponseWrapper pullData(const String& strUrl, IRhoSession* oSession );
     rho::net::CNetResponseWrapper pushData(const String& strUrl, const String& strBody, IRhoSession* oSession);
-    rho::net::CNetResponseWrapper pullCookies(const String& strUrl, const String& strBody, IRhoSession* oSession);
-    rho::net::CNetResponseWrapper doRequest( const char* method, const String& strUrl, const String& strBody, IRhoSession* oSession, Hashtable<String,String>* pHeaders );
+    rho::net::CNetResponseWrapper pullCookies(const String& strUrl, const String& strBody, IRhoSession* oSession, Hashtable<String, String>* pHeaders);
+    rho::net::CNetResponseWrapper doRequest( const char* method, const String& strUrl, const String& strBody, IRhoSession* oSession, Hashtable<String,String>* pHeaders);
     rho::net::CNetResponseWrapper pushMultipartData(const String& strUrl, VectorPtr<CMultipartItem*>& arItems, IRhoSession* oSession, Hashtable<String,String>* pHeaders);
     rho::net::CNetResponseWrapper pushMultipartData(const String& strUrl, CMultipartItem& oItem, IRhoSession* oSession, Hashtable<String,String>* pHeaders);
     rho::net::CNetResponseWrapper pullFile(const String& strUrl, const String& strFilePath, IRhoSession* oSession, Hashtable<String,String>* pHeaders,bool overwriteFile,bool createFolders, bool* pFileExistsFlag = 0 );

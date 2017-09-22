@@ -550,9 +550,8 @@ namespace rho.net
             return pushMultipartData(strUrl, arItems, oSession, pHeaders);
         }
 	
-	    public NetResponse pullCookies(String strUrl, String strBody, IRhoSession oSession)
+	    public NetResponse pullCookies(String strUrl, String strBody, IRhoSession oSession, Hashtable<String, String> headers)
 	    {
-		    Hashtable<String,String> headers = new Hashtable<String,String>();
 		    m_bCancel = false;
     	
 		    NetResponse resp = doRequest/*Try*/("POST", strUrl, strBody, oSession, headers);
