@@ -6,8 +6,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.net.HttpCookie;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.ExecutionException;
@@ -56,9 +58,9 @@ public class NetRequest
         try {
             return task.get();
         } catch (InterruptedException e) {
-            return new NetResponse(-1, null);
+            return new NetResponse(-1, null, null);
         } catch (ExecutionException e) {
-            return new NetResponse(-1, null);
+            return new NetResponse(-1, null, null);
         }
     }
 
@@ -111,7 +113,8 @@ public class NetRequest
 
                 return new NetResponse(
                     connection.getResponseCode(),
-                    convertStreamToString(in)
+                    convertStreamToString(in),
+                    readCookies(connection)
                 );
             } finally {
                 INFO("MARK 7");
@@ -128,12 +131,27 @@ public class NetRequest
                 }
             }
             INFO("response code is " + response_code);
-            return new NetResponse(response_code, null);
+            return new NetResponse(response_code, null, null);
         }
     }
 
     private static String convertStreamToString(InputStream is) {
         Scanner s = new Scanner(is).useDelimiter("\\A");
         return s.hasNext() ? s.next() : "";
+    }
+
+    private static String readCookies(HttpURLConnection connection) {
+        StringBuilder sb = new StringBuilder();
+        List<String> headers = connection.getHeaderFields().get("Set-Cookie");
+        if (headers != null) {
+            for (String header : headers) {
+                for (HttpCookie cookie : HttpCookie.parse(header)) {
+                    sb.append(cookie.getName()).append('=').append(cookie.getValue()).append(';');
+                }
+            }
+        }
+        String s = sb.toString();
+        INFO("cookies are [" + s + "]");
+        return s;
     }
 }
