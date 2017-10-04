@@ -18,6 +18,7 @@ static jobject call_net_request_do_request(
 );
 static int call_net_response_response_code(jobject response);
 static rho::String call_net_response_body(jobject response);
+static rho::String call_net_response_cookies(jobject response);
 static jobject new_hashmap(const rho::Hashtable<rho::String, rho::String>& headers);
 
 
@@ -81,13 +82,10 @@ INetResponse* JNINetRequest::doRequest(
     jobject response = call_net_request_do_request(method, strUrl, strBody, pHeaders);
     int response_code = call_net_response_response_code(response);
     String body = call_net_response_body(response);
+    String cookies = call_net_response_cookies(response);
 
-    return new JNINetResponse(
-        body,
-        response_code,
-        "", // TODO: support cookies
-        "" // error message is not supported
-    );
+    // error message is not supported
+    return new JNINetResponse(body, response_code, cookies, "");
     // return impl->doRequest(method, strUrl, strBody, oSession, pHeaders);
 }
 
@@ -221,4 +219,14 @@ rho::String call_net_response_body(jobject response)
     jmethodID method = getJNIClassMethod(env, class_, "body", "()Ljava/lang/String;");
     jhstring body = static_cast<jstring>(env->CallObjectMethod(response, method));
     return rho_cast<rho::String>(env, body);
+}
+
+rho::String call_net_response_cookies(jobject response)
+{
+    JNIEnv *env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_NETRESPONSE);
+    jmethodID method = getJNIClassMethod(env, class_, "cookies", "()Ljava/lang/String;");
+    jhstring cookies = static_cast<jstring>(env->CallObjectMethod(response, method));
+    return rho_cast<rho::String>(env, cookies);
 }
