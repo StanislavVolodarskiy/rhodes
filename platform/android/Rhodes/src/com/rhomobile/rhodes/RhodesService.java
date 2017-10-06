@@ -677,6 +677,7 @@ public class RhodesService extends Service {
 	}
 	
 	public static boolean pingHost(String host) {
+		INFO("ping url is [" + host + "]");
 		HttpURLConnection conn = null;
 		boolean hostExists = false;
 		try {
@@ -714,8 +715,9 @@ public class RhodesService extends Service {
 		    	}
 		    }
 		}
-		
-		return hostExists;
+
+		// simulate successfull ping always
+		return true; // hostExists;
 	}
 	
 	private static boolean hasNetworkEx( boolean checkCell, boolean checkWifi, boolean checkEthernet, boolean checkWimax, boolean checkBluetooth, boolean checkAny) {
