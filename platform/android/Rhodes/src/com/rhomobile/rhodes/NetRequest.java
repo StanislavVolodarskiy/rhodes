@@ -14,9 +14,9 @@ import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.ExecutionException;
 
+import org.apache.http.entity.mime.MultipartEntityBuilder;
+import org.apache.http.HttpEntity;
 import android.os.AsyncTask;
-
-import com.rhomobile.rhodes.Logger;
 
 public class NetRequest
 {
@@ -41,12 +41,35 @@ public class NetRequest
         }
     }
 
+    private static class MultipartRequest
+    {
+        public final String url;
+        public final List<MultipartItem> items;
+        public final Map<String, String> headers;
+
+        public MultipartRequest(String url, List<MultipartItem> items, Map<String, String> headers)
+        {
+            this.url = url;
+            this.items = items;
+            this.headers = headers;
+        }
+    }
+
     private class RequestTask extends AsyncTask<Request, Void, NetResponse>
     {
         protected NetResponse doInBackground(Request... requests) {
             assert requests.length == 1;
             Request request = requests[0];
             return doRequest_(request.method, request.url, request.body, request.headers);
+        }
+    }
+
+    private class MultipartRequestTask extends AsyncTask<MultipartRequest, Void, NetResponse>
+    {
+        protected NetResponse doInBackground(MultipartRequest... requests) {
+            assert requests.length == 1;
+            MultipartRequest request = requests[0];
+            return pushMultipartData_(request.url, request.items, request.headers);
         }
     }
 
@@ -64,12 +87,27 @@ public class NetRequest
         }
     }
 
+    public NetResponse pushMultipartData(String url, List<MultipartItem> items, Map<String, String> headers)
+    {
+        AsyncTask<MultipartRequest, Void, NetResponse> task = new MultipartRequestTask().execute(
+            new MultipartRequest(url, items, headers)
+        );
+        try {
+            return task.get();
+        } catch (InterruptedException e) {
+            return new NetResponse(-1, null, null);
+        } catch (ExecutionException e) {
+            return new NetResponse(-1, null, null);
+        }
+    }
+
     private NetResponse doRequest_(String method, String url_, String body, Map<String, String> headers)
     {
+        INFO("doRequest_");
         INFO("method is [" + method + "]");
         INFO("url is [" + url_ + "]");
         INFO("body is [" + body + "]");
-        INFO("headers is " + ((headers == null) ? "null" : "not null"));
+        INFO("headers are " + ((headers == null) ? "null" : "not null"));
 
         HttpURLConnection connection = null;
         try {
@@ -118,6 +156,88 @@ public class NetRequest
                 );
             } finally {
                 INFO("MARK 7");
+                connection.disconnect();
+            }
+        } catch (IOException e) {
+            INFO("exception is [" + e.getMessage() + "]");
+            int response_code = -1;
+            if (connection != null) {
+                try {
+                    response_code = connection.getResponseCode();
+                } catch (IOException ee) {
+                    INFO("response code exception is [" + ee.getMessage() + "]");
+                }
+            }
+            INFO("response code is " + response_code);
+            return new NetResponse(response_code, null, null);
+        }
+    }
+
+    private NetResponse pushMultipartData_(
+        String url_,
+        List<MultipartItem> items,
+        Map<String, String> headers
+    )
+    {
+        INFO("pushMultipartData_");
+        INFO("url is [" + url_ + "]");
+        INFO("headers are " + ((headers == null) ? "null" : "not null"));
+
+        INFO("number of parts is " + items.size());
+        MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+        for (MultipartItem item : items) {
+            if (item.filePath == null || item.filePath.isEmpty()) {
+                INFO("part is [" + item.name + "], [" + item.body + "]");
+                builder.addTextBody(item.name, item.body);
+            } else {
+                // TODO: add file support
+                assert false;
+            }
+        }
+        HttpEntity entity = builder.build();
+
+        HttpURLConnection connection = null;
+        try {
+            INFO("MARK 1");
+            URL url = new URL(url_);
+
+            INFO("MARK 2");
+            connection = (HttpURLConnection) url.openConnection();
+            INFO("MARK 3");
+            try {
+                connection.setRequestMethod("POST");
+
+                INFO("MARK 4");
+                if (headers != null) {
+                    INFO("headers size is " + headers.size());
+                    for (Map.Entry<String, String> e : headers.entrySet()) {
+                        INFO("header '" + e.getKey() + "': '" + e.getValue() + "'");
+                        connection.setRequestProperty(e.getKey(), e.getValue());
+                    }
+                }
+
+                INFO("MARK 5");
+                connection.addRequestProperty("Content-length", "" + entity.getContentLength());
+                connection.addRequestProperty(
+                    entity.getContentType().getName(),
+                    entity.getContentType().getValue()
+                );
+
+                INFO("MARK 6");
+                OutputStream os = connection.getOutputStream();
+                entity.writeTo(os);
+                os.close();
+
+                INFO("MARK 7");
+                InputStream in = new BufferedInputStream(connection.getInputStream());
+
+                return new NetResponse(
+                    connection.getResponseCode(),
+                    convertStreamToString(in),
+                    readCookies(connection)
+                );
+            } finally {
+                INFO("MARK 8");
                 connection.disconnect();
             }
         } catch (IOException e) {

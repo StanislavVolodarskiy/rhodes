@@ -129,7 +129,6 @@ import java.net.Inet4Address;
 import java.net.SocketException;
 
 public class RhodesService extends Service {
-	
 	private static final String TAG = RhodesService.class.getSimpleName();
 	
 	private static final boolean DEBUG = false;
@@ -139,7 +138,7 @@ public class RhodesService extends Service {
 	public static final String INTENT_SOURCE = INTENT_EXTRA_PREFIX + ".intent_source";
 	
 	public static final String INTENT_EXTRA_MESSAGE = INTENT_EXTRA_PREFIX + ".message";
- 	
+	
 	public static int WINDOW_FLAGS = WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN;
 	public static int WINDOW_MASK = WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN;
 	public static boolean ANDROID_TITLE = true;
@@ -677,7 +676,8 @@ public class RhodesService extends Service {
 	}
 	
 	public static boolean pingHost(String host) {
-		INFO("ping url is [" + host + "]");
+		Logger.I(TAG, "ping url is [" + host + "]");
+
 		HttpURLConnection conn = null;
 		boolean hostExists = false;
 		try {
