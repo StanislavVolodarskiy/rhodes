@@ -30,13 +30,15 @@ public class NetRequest
         public final String method;
         public final String url;
         public final String body;
+        public final String session;
         public final Map<String, String> headers;
 
-        public Request(String method, String url, String body, Map<String, String> headers)
+        public Request(String method, String url, String body, String session, Map<String, String> headers)
         {
             this.method = method;
             this.url = url;
             this.body = body;
+            this.session = session;
             this.headers = headers;
         }
     }
@@ -45,12 +47,19 @@ public class NetRequest
     {
         public final String url;
         public final List<MultipartItem> items;
+        public final String session;
         public final Map<String, String> headers;
 
-        public MultipartRequest(String url, List<MultipartItem> items, Map<String, String> headers)
+        public MultipartRequest(
+            String url,
+            List<MultipartItem> items,
+            String session,
+            Map<String, String> headers
+        )
         {
             this.url = url;
             this.items = items;
+            this.session = session;
             this.headers = headers;
         }
     }
@@ -60,7 +69,7 @@ public class NetRequest
         protected NetResponse doInBackground(Request... requests) {
             assert requests.length == 1;
             Request request = requests[0];
-            return doRequest_(request.method, request.url, request.body, request.headers);
+            return doRequest_(request.method, request.url, request.body, request.session, request.headers);
         }
     }
 
@@ -69,14 +78,20 @@ public class NetRequest
         protected NetResponse doInBackground(MultipartRequest... requests) {
             assert requests.length == 1;
             MultipartRequest request = requests[0];
-            return pushMultipartData_(request.url, request.items, request.headers);
+            return pushMultipartData_(request.url, request.items, request.session, request.headers);
         }
     }
 
-    public NetResponse doRequest(String method, String url, String body, Map<String, String> headers)
+    public NetResponse doRequest(
+        String method,
+        String url,
+        String body,
+        String session,
+        Map<String, String> headers
+    )
     {
         AsyncTask<Request, Void, NetResponse> task = new RequestTask().execute(
-            new Request(method, url, body, headers)
+            new Request(method, url, body, session, headers)
         );
         try {
             return task.get();
@@ -87,10 +102,15 @@ public class NetRequest
         }
     }
 
-    public NetResponse pushMultipartData(String url, List<MultipartItem> items, Map<String, String> headers)
+    public NetResponse pushMultipartData(
+        String url,
+        List<MultipartItem> items,
+        String session,
+        Map<String, String> headers
+    )
     {
         AsyncTask<MultipartRequest, Void, NetResponse> task = new MultipartRequestTask().execute(
-            new MultipartRequest(url, items, headers)
+            new MultipartRequest(url, items, session, headers)
         );
         try {
             return task.get();
@@ -101,12 +121,19 @@ public class NetRequest
         }
     }
 
-    private NetResponse doRequest_(String method, String url_, String body, Map<String, String> headers)
+    private NetResponse doRequest_(
+        String method,
+        String url_,
+        String body,
+        String session,
+        Map<String, String> headers
+    )
     {
         INFO("doRequest_");
         INFO("method is [" + method + "]");
         INFO("url is [" + url_ + "]");
         INFO("body is [" + body + "]");
+        INFO("session is [" + session + "]");
         INFO("headers are " + ((headers == null) ? "null" : "not null"));
 
         HttpURLConnection connection = null;
@@ -130,23 +157,28 @@ public class NetRequest
                 }
 
                 INFO("MARK 5");
-                if ("POST".equals(method) && body != null) {
-                    INFO("MARK 5.1");
-                    OutputStream os = connection.getOutputStream();
-                    INFO("MARK 5.2");
-                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"));
-                    INFO("MARK 5.3");
-                    writer.write(body);
-                    INFO("MARK 5.4");
-                    writer.flush();
-                    INFO("MARK 5.5");
-                    writer.close();
-                    INFO("MARK 5.6");
-                    os.close();
-                    INFO("MARK 5.7");
+                if (session != null && !session.isEmpty()) {
+                    connection.setRequestProperty("Cookie", session);
                 }
 
                 INFO("MARK 6");
+                if ("POST".equals(method) && body != null) {
+                    INFO("MARK 6.1");
+                    OutputStream os = connection.getOutputStream();
+                    INFO("MARK 6.2");
+                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"));
+                    INFO("MARK 6.3");
+                    writer.write(body);
+                    INFO("MARK 6.4");
+                    writer.flush();
+                    INFO("MARK 6.5");
+                    writer.close();
+                    INFO("MARK 6.6");
+                    os.close();
+                    INFO("MARK 6.7");
+                }
+
+                INFO("MARK 7");
                 InputStream in = new BufferedInputStream(connection.getInputStream());
 
                 return new NetResponse(
@@ -155,7 +187,7 @@ public class NetRequest
                     readCookies(connection)
                 );
             } finally {
-                INFO("MARK 7");
+                INFO("MARK 8");
                 connection.disconnect();
             }
         } catch (IOException e) {
@@ -176,11 +208,13 @@ public class NetRequest
     private NetResponse pushMultipartData_(
         String url_,
         List<MultipartItem> items,
+        String session,
         Map<String, String> headers
     )
     {
         INFO("pushMultipartData_");
         INFO("url is [" + url_ + "]");
+        INFO("session is [" + session + "]");
         INFO("headers are " + ((headers == null) ? "null" : "not null"));
 
         INFO("number of parts is " + items.size());
@@ -217,18 +251,23 @@ public class NetRequest
                 }
 
                 INFO("MARK 5");
+                if (session != null && !session.isEmpty()) {
+                    connection.setRequestProperty("Cookie", session);
+                }
+
+                INFO("MARK 6");
                 connection.addRequestProperty("Content-length", "" + entity.getContentLength());
                 connection.addRequestProperty(
                     entity.getContentType().getName(),
                     entity.getContentType().getValue()
                 );
 
-                INFO("MARK 6");
+                INFO("MARK 7");
                 OutputStream os = connection.getOutputStream();
                 entity.writeTo(os);
                 os.close();
 
-                INFO("MARK 7");
+                INFO("MARK 8");
                 InputStream in = new BufferedInputStream(connection.getInputStream());
 
                 return new NetResponse(
@@ -237,7 +276,7 @@ public class NetRequest
                     readCookies(connection)
                 );
             } finally {
-                INFO("MARK 8");
+                INFO("MARK 9");
                 connection.disconnect();
             }
         } catch (IOException e) {
