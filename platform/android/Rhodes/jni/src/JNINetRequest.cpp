@@ -1,3 +1,4 @@
+#include <sstream>
 #include "rhodes/JNIRhodes.h"
 #include "rhodes/JNINetRequest.h"
 #include "net/CURLNetRequest.h"
@@ -12,6 +13,12 @@
 
 extern "C" void rho_net_impl_network_indicator(int active);
 
+static int pull_file(
+    const rho::String& url,
+    rho::common::CRhoFile& file,
+    rho::net::IRhoSession* pSession,
+    rho::Hashtable<rho::String, rho::String>* pHeaders
+);
 static jobject call_net_request_do_request(
     const char* method,
     const rho::String& url,
@@ -19,9 +26,15 @@ static jobject call_net_request_do_request(
           rho::net::IRhoSession* pSession,
     const rho::Hashtable<rho::String, rho::String>* pHeaders
 );
+static jobject call_net_request_pull_file(
+    const rho::String& url,
+          long start_from,
+          rho::net::IRhoSession* pSession,
+    const rho::Hashtable<rho::String, rho::String>* pHeaders
+);
 static jobject call_net_request_push_multipart_data(
     const rho::String& url,
-    const rho::VectorPtr<rho::net::CMultipartItem*>& arItems,
+    const rho::VectorPtr<rho::net::CMultipartItem*>& items,
           rho::net::IRhoSession* pSession,
     const rho::Hashtable<rho::String, rho::String>* pHeaders
 );
@@ -32,7 +45,7 @@ static rho::String get_session_string(rho::net::IRhoSession* pSession);
 static jobject new_hashmap(const rho::Hashtable<rho::String, rho::String>& headers);
 static rho::net::INetResponse* convert_net_response(jobject response);
 static jobject new_multipart_item(const rho::net::CMultipartItem& item);
-static jobject new_multipart_items(const rho::VectorPtr<rho::net::CMultipartItem*>& arItems);
+static jobject new_multipart_items(const rho::VectorPtr<rho::net::CMultipartItem*>& items);
 
 
 namespace rho {
@@ -41,8 +54,16 @@ namespace net {
 class NetworkIndicator
 {
 public:
-    NetworkIndicator() { rho_net_impl_network_indicator(1); }
-    ~NetworkIndicator() { rho_net_impl_network_indicator(0); }
+    NetworkIndicator(bool enable_ = true) : enable(enable_) { set(1); }
+    ~NetworkIndicator() { set(0); }
+private:
+    void set(int state)
+    {
+       if (enable) {
+           rho_net_impl_network_indicator(state);
+       }
+    }
+    const bool enable;
 };
 
 class JNINetResponse : public INetResponse
@@ -89,40 +110,41 @@ JNINetRequest::~JNINetRequest()
     delete impl;
 }
 
-rho::net::INetResponse* JNINetRequest::doRequest(
+INetResponse* JNINetRequest::doRequest(
     const char* method,
-    const String& strUrl,
-    const String& strBody,
-    IRhoSession* oSession,
+    const String& url,
+    const String& body,
+    IRhoSession* pSession,
     Hashtable<String, String>* pHeaders
 )
 {
     RAWLOG_INFO("UGU doRequest");
     NetworkIndicator ni;
-    return convert_net_response(call_net_request_do_request(method, strUrl, strBody, oSession, pHeaders));
+    return convert_net_response(call_net_request_do_request(method, url, body, pSession, pHeaders));
 }
 
 INetResponse* JNINetRequest::pullFile(
-    const String& strUrl,
-    common::CRhoFile& oFile,
-    IRhoSession* oSession,
+    const String& url,
+    rho::common::CRhoFile& file,
+    IRhoSession* pSession,
     Hashtable<String, String>* pHeaders
 )
 {
     RAWLOG_INFO("UGU pullFile");
-    return impl->pullFile(strUrl, oFile, oSession, pHeaders);
+    NetworkIndicator ni = !RHODESAPP().isBaseUrl(url.c_str());
+    return new rho::net::JNINetResponse("", pull_file(url, file, pSession, pHeaders), "", "");
 }
 
 INetResponse* JNINetRequest::pushMultipartData(
-    const String& strUrl,
-    VectorPtr<CMultipartItem*>& arItems,
-    IRhoSession* oSession,
+    const String& url,
+    VectorPtr<CMultipartItem*>& items,
+    IRhoSession* pSession,
     Hashtable<String, String>* pHeaders
 )
 {
     RAWLOG_INFO("UGU pushMultipartData");
     NetworkIndicator ni;
-    return convert_net_response(call_net_request_push_multipart_data(strUrl, arItems, oSession, pHeaders));
+    return convert_net_response(call_net_request_push_multipart_data(url, items, pSession, pHeaders));
 }
 
 void JNINetRequest::cancel()
@@ -159,6 +181,33 @@ void JNINetRequest::setCallback(INetRequestCallback* cb)
 } // namespace rho
 
 
+int pull_file(
+    const rho::String& url,
+    rho::common::CRhoFile& file,
+    rho::net::IRhoSession* pSession,
+    rho::Hashtable<rho::String, rho::String>* pHeaders
+)
+{
+    int response_code = -1;
+    for (int n = 0; n < 10; ++n) {
+        jobject response = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
+        response_code = call_net_response_response_code(response);
+        switch (response_code) {
+        case 416:
+            // simulate successful completion
+            return 206;
+        case 206:
+            {
+                rho::String body = call_net_response_body(response);
+                file.write(body.c_str(), body.size());
+                file.flush();
+            }
+            return 206;
+        }
+    }
+    return response_code;
+}
+
 jobject call_net_request_do_request(
     const char*        method,
     const rho::String& url,
@@ -186,7 +235,7 @@ jobject call_net_request_do_request(
     jhstring url_j = rho_cast<jstring>(env, url);
     jhstring body_j = rho_cast<jstring>(env, body);
     jhstring session_j = rho_cast<jstring>(env, get_session_string(pSession));
-    jobject headers = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
+    jobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
 
     return env->CallObjectMethod(
         net_request,
@@ -195,13 +244,31 @@ jobject call_net_request_do_request(
         url_j.get(),
         body_j.get(),
         session_j.get(),
-        headers
+        headers_j
     );
+}
+
+jobject call_net_request_pull_file(
+    const rho::String& url,
+          long start_from,
+          rho::net::IRhoSession* pSession,
+    const rho::Hashtable<rho::String, rho::String>* pHeaders
+)
+{
+    rho::Hashtable<rho::String, rho::String> headers;
+    if (pHeaders != NULL) {
+        headers = *pHeaders;
+    }
+	std::ostringstream oss;
+    oss << "bytes=" << start_from << "-";
+    headers.put("Range", oss.str());
+
+    return call_net_request_do_request("GET", url, "", pSession, &headers);
 }
 
 jobject call_net_request_push_multipart_data(
     const rho::String& url,
-    const rho::VectorPtr<rho::net::CMultipartItem*>& arItems,
+    const rho::VectorPtr<rho::net::CMultipartItem*>& items,
           rho::net::IRhoSession* pSession,
     const rho::Hashtable<rho::String, rho::String>* pHeaders
 )
@@ -221,17 +288,17 @@ jobject call_net_request_push_multipart_data(
     jobject net_request = env->NewObject(class_, constructor);
 
     jhstring url_j = rho_cast<jstring>(env, url);
-    jobject multipart_items = new_multipart_items(arItems);
+    jobject items_j = new_multipart_items(items);
     jhstring session_j = rho_cast<jstring>(env, get_session_string(pSession));
-    jobject headers = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
+    jobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
 
     return env->CallObjectMethod(
         net_request,
         do_push_multipart_data,
         url_j.get(),
-        multipart_items,
+        items_j,
         session_j.get(),
-        headers
+        headers_j
     );
 }
 
@@ -337,7 +404,7 @@ jobject new_multipart_item(const rho::net::CMultipartItem& item)
     );
 }
 
-jobject new_multipart_items(const rho::VectorPtr<rho::net::CMultipartItem*>& arItems)
+jobject new_multipart_items(const rho::VectorPtr<rho::net::CMultipartItem*>& items)
 {
     JNIEnv *env = jnienv();
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_ARRAYLIST);
@@ -346,11 +413,11 @@ jobject new_multipart_items(const rho::VectorPtr<rho::net::CMultipartItem*>& arI
     jobject arraylist = env->NewObject(class_, constructor);
 
     for (
-        rho::VectorPtr<rho::net::CMultipartItem*>::const_iterator it = arItems.begin();
-        it != arItems.end();
+        rho::VectorPtr<rho::net::CMultipartItem*>::const_iterator it = items.begin();
+        it != items.end();
         ++it
     ) {
-        if (*it != 0) {
+        if (*it != NULL) {
             env->CallObjectMethod(arraylist, add, new_multipart_item(**it));
         }
     }
