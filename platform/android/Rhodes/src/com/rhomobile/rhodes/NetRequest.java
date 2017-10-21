@@ -179,15 +179,13 @@ public class NetRequest
                 }
 
                 INFO("MARK 7");
-                InputStream in = new BufferedInputStream(connection.getInputStream());
+                String response_body = readResponseBody(connection);
+                INFO("response body size is " + response_body.length());
 
-                return new NetResponse(
-                    connection.getResponseCode(),
-                    convertStreamToString(in),
-                    readCookies(connection)
-                );
-            } finally {
                 INFO("MARK 8");
+                return new NetResponse(connection.getResponseCode(), response_body, readCookies(connection));
+            } finally {
+                INFO("MARK 9");
                 connection.disconnect();
             }
         } catch (IOException e) {
@@ -268,15 +266,14 @@ public class NetRequest
                 os.close();
 
                 INFO("MARK 8");
-                InputStream in = new BufferedInputStream(connection.getInputStream());
+                String response_body = readResponseBody(connection);
+                INFO("response body size is " + response_body.length());
 
-                return new NetResponse(
-                    connection.getResponseCode(),
-                    convertStreamToString(in),
-                    readCookies(connection)
-                );
-            } finally {
                 INFO("MARK 9");
+
+                return new NetResponse(connection.getResponseCode(), response_body, readCookies(connection));
+            } finally {
+                INFO("MARK 10");
                 connection.disconnect();
             }
         } catch (IOException e) {
@@ -297,6 +294,10 @@ public class NetRequest
     private static String convertStreamToString(InputStream is) {
         Scanner s = new Scanner(is).useDelimiter("\\A");
         return s.hasNext() ? s.next() : "";
+    }
+
+    private static String readResponseBody(HttpURLConnection connection) throws IOException {
+        return convertStreamToString(new BufferedInputStream(connection.getInputStream()));
     }
 
     private static String readCookies(HttpURLConnection connection) {
