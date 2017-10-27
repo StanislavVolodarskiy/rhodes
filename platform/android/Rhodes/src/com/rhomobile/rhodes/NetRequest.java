@@ -1,11 +1,9 @@
 package com.rhomobile.rhodes;
 
 import java.io.BufferedInputStream;
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.net.HttpCookie;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -123,7 +121,7 @@ public class NetRequest
 
     private NetResponse doRequest_(
         String method,
-        String url_,
+        String url,
         String body,
         String session,
         Map<String, String> headers
@@ -131,18 +129,16 @@ public class NetRequest
     {
         INFO("doRequest_");
         INFO("method is [" + method + "]");
-        INFO("url is [" + url_ + "]");
+        INFO("url is [" + url + "]");
         INFO("body is [" + body + "]");
         INFO("session is [" + session + "]");
         INFO("headers are " + ((headers == null) ? "null" : "not null"));
 
-        HttpURLConnection connection = null;
+        NetConnection connection = null;
         try {
             INFO("MARK 1");
-            URL url = new URL(url_);
+            connection = new NetConnection(url);
 
-            INFO("MARK 2");
-            connection = (HttpURLConnection) url.openConnection();
             INFO("MARK 3");
             try {
                 connection.setRequestMethod(method);
@@ -163,19 +159,9 @@ public class NetRequest
 
                 INFO("MARK 6");
                 if ("POST".equals(method) && body != null) {
-                    INFO("MARK 6.1");
-                    OutputStream os = connection.getOutputStream();
-                    INFO("MARK 6.2");
-                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"));
-                    INFO("MARK 6.3");
+                    NetConnectionWriter writer = connection.getWriter();
                     writer.write(body);
-                    INFO("MARK 6.4");
-                    writer.flush();
-                    INFO("MARK 6.5");
                     writer.close();
-                    INFO("MARK 6.6");
-                    os.close();
-                    INFO("MARK 6.7");
                 }
 
                 INFO("MARK 7");
@@ -183,7 +169,7 @@ public class NetRequest
                 INFO("response body size is " + response_body.length());
 
                 INFO("MARK 8");
-                return new NetResponse(connection.getResponseCode(), response_body, readCookies(connection));
+                return new NetResponse(connection.getResponseCode(), response_body, connection.getCookies());
             } finally {
                 INFO("MARK 9");
                 connection.disconnect();
@@ -192,11 +178,7 @@ public class NetRequest
             INFO("exception is [" + e.getMessage() + "]");
             int response_code = -1;
             if (connection != null) {
-                try {
-                    response_code = connection.getResponseCode();
-                } catch (IOException ee) {
-                    INFO("response code exception is [" + ee.getMessage() + "]");
-                }
+                response_code = connection.getResponseCode();
             }
             INFO("response code is " + response_code);
             return new NetResponse(response_code, null, null);
@@ -291,16 +273,27 @@ public class NetRequest
         }
     }
 
-    private static String convertStreamToString(InputStream is) {
+    private static String convertStreamToString(InputStream is)
+    {
         Scanner s = new Scanner(is).useDelimiter("\\A");
         return s.hasNext() ? s.next() : "";
     }
 
-    private static String readResponseBody(HttpURLConnection connection) throws IOException {
+    private static String readResponseBody(HttpURLConnection connection) throws IOException
+    {
         return convertStreamToString(new BufferedInputStream(connection.getInputStream()));
     }
 
-    private static String readCookies(HttpURLConnection connection) {
+    private static String readResponseBody(NetConnection connection) throws IOException
+    {
+        NetConnectionReader reader = connection.getReader();
+        String response_body = reader.readAll();
+        reader.close();
+        return response_body;
+    }
+
+    private static String readCookies(HttpURLConnection connection)
+    {
         StringBuilder sb = new StringBuilder();
         List<String> headers = connection.getHeaderFields().get("Set-Cookie");
         if (headers != null) {
