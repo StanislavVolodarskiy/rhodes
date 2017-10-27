@@ -41,9 +41,15 @@ static jobject call_net_request_push_multipart_data(
 static int call_net_response_response_code(jobject response);
 static rho::String call_net_response_body(jobject response);
 static rho::String call_net_response_cookies(jobject response);
+static rho::String call_net_connection_body(jobject connection, int n);
+static rho::String call_net_connection_all_body(jobject connection);
+static int call_net_connection_response_code(jobject connection);
+static rho::String call_net_connection_cookies(jobject connection);
+static void call_net_connection_disconnect(jobject connection);
 static rho::String get_session_string(rho::net::IRhoSession* pSession);
 static jobject new_hashmap(const rho::Hashtable<rho::String, rho::String>& headers);
 static rho::net::INetResponse* convert_net_response(jobject response);
+static rho::net::INetResponse* convert_net_connection(jobject connection);
 static jobject new_multipart_item(const rho::net::CMultipartItem& item);
 static jobject new_multipart_items(const rho::VectorPtr<rho::net::CMultipartItem*>& items);
 
@@ -120,7 +126,7 @@ INetResponse* JNINetRequest::doRequest(
 {
     RAWLOG_INFO("UGU doRequest");
     NetworkIndicator ni;
-    return convert_net_response(call_net_request_do_request(method, url, body, pSession, pHeaders));
+    return convert_net_connection(call_net_request_do_request(method, url, body, pSession, pHeaders));
 }
 
 INetResponse* JNINetRequest::pullFile(
@@ -190,18 +196,21 @@ int pull_file(
 {
     int response_code = -1;
     for (int n = 0; n < 10; ++n) {
-        jobject response = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
-        response_code = call_net_response_response_code(response);
+        jobject connection = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
+        while (true) {
+            rho::String body = call_net_connection_body(connection, 16384);
+            if (body.size() == 0) {
+                file.flush();
+                break;
+            }
+            file.write(body.c_str(), body.size());
+        }
+
+        response_code = call_net_connection_response_code(connection);
         switch (response_code) {
         case 416:
             // simulate successful completion
-            return 206;
         case 206:
-            {
-                rho::String body = call_net_response_body(response);
-                file.write(body.c_str(), body.size());
-                file.flush();
-            }
             return 206;
         }
     }
@@ -225,7 +234,7 @@ jobject call_net_request_do_request(
         class_,
         "doRequest",
         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)"
-        "Lcom/rhomobile/rhodes/NetResponse;"
+        "Lcom/rhomobile/rhodes/INetConnection;"
     );
 
 
@@ -362,11 +371,70 @@ rho::String call_net_response_cookies(jobject response)
     return rho_cast<rho::String>(env, cookies);
 }
 
+rho::String call_net_connection_body(jobject connection, int n)
+{
+    JNIEnv *env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
+    jmethodID method = getJNIClassMethod(env, class_, "readResponseBody", "(I)Ljava/lang/String;");
+    jhstring body = static_cast<jstring>(env->CallObjectMethod(connection, method, n));
+    return rho_cast<rho::String>(env, body);
+}
+
+rho::String call_net_connection_all_body(jobject connection)
+{
+    JNIEnv *env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
+    jmethodID method = getJNIClassMethod(env, class_, "readAllResponseBody", "()Ljava/lang/String;");
+    jhstring body = static_cast<jstring>(env->CallObjectMethod(connection, method));
+    return rho_cast<rho::String>(env, body);
+}
+
+int call_net_connection_response_code(jobject connection)
+{
+    JNIEnv *env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
+    jmethodID method = getJNIClassMethod(env, class_, "getResponseCode", "()I");
+    return env->CallIntMethod(connection, method);
+}
+
+rho::String call_net_connection_cookies(jobject connection)
+{
+    JNIEnv *env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
+    jmethodID method = getJNIClassMethod(env, class_, "getCookies", "()Ljava/lang/String;");
+    jhstring cookies = static_cast<jstring>(env->CallObjectMethod(connection, method));
+    return rho_cast<rho::String>(env, cookies);
+}
+
+void call_net_connection_disconnect(jobject connection)
+{
+    JNIEnv *env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
+    jmethodID method = getJNIClassMethod(env, class_, "disconnect", "()V");
+    env->CallVoidMethod(connection, method);
+}
+
 rho::net::INetResponse* convert_net_response(jobject response)
 {
     int response_code = call_net_response_response_code(response);
     rho::String body = call_net_response_body(response);
     rho::String cookies = call_net_response_cookies(response);
+
+    // error message is not supported
+    return new rho::net::JNINetResponse(body, response_code, cookies, "");
+}
+
+rho::net::INetResponse* convert_net_connection(jobject connection)
+{
+    rho::String body = call_net_connection_all_body(connection);
+    int response_code = call_net_connection_response_code(connection);
+    rho::String cookies = call_net_connection_cookies(connection);
+    call_net_connection_disconnect(connection);
 
     // error message is not supported
     return new rho::net::JNINetResponse(body, response_code, cookies, "");

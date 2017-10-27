@@ -1,19 +1,12 @@
 package com.rhomobile.rhodes;
 
-import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpCookie;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.ProtocolException;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.http.entity.mime.MultipartEntityBuilder;
-import org.apache.http.HttpEntity;
 import android.os.AsyncTask;
 
 public class NetRequest
@@ -22,6 +15,15 @@ public class NetRequest
     private static void ERROR(String    msg) { Logger.E(TAG, msg); }
     private static void INFO (String    msg) { Logger.I(TAG, msg); }
     private static void ERROR(Throwable ex ) { Logger.E(TAG, ex ); }
+
+    private static final INetConnection failedNetConnection = new INetConnection()
+    {
+        @Override public String readResponseBody(int n) { return null; }
+        @Override public String readAllResponseBody() { return null; }
+        @Override public int getResponseCode() { return -1; }
+        @Override public String getCookies() { return null; }
+        @Override public void disconnect() { }
+    };
 
     private static class Request
     {
@@ -62,9 +64,9 @@ public class NetRequest
         }
     }
 
-    private class RequestTask extends AsyncTask<Request, Void, NetResponse>
+    private class RequestTask extends AsyncTask<Request, Void, INetConnection>
     {
-        protected NetResponse doInBackground(Request... requests) {
+        protected INetConnection doInBackground(Request... requests) {
             assert requests.length == 1;
             Request request = requests[0];
             return doRequest_(request.method, request.url, request.body, request.session, request.headers);
@@ -80,7 +82,7 @@ public class NetRequest
         }
     }
 
-    public NetResponse doRequest(
+    public INetConnection doRequest(
         String method,
         String url,
         String body,
@@ -88,15 +90,15 @@ public class NetRequest
         Map<String, String> headers
     )
     {
-        AsyncTask<Request, Void, NetResponse> task = new RequestTask().execute(
+        AsyncTask<Request, Void, INetConnection> task = new RequestTask().execute(
             new Request(method, url, body, session, headers)
         );
         try {
             return task.get();
         } catch (InterruptedException e) {
-            return new NetResponse(-1, null, null);
+            return failedNetConnection;
         } catch (ExecutionException e) {
-            return new NetResponse(-1, null, null);
+            return failedNetConnection;
         }
     }
 
@@ -119,7 +121,7 @@ public class NetRequest
         }
     }
 
-    private NetResponse doRequest_(
+    private INetConnection doRequest_(
         String method,
         String url,
         String body,
@@ -139,172 +141,88 @@ public class NetRequest
             INFO("MARK 1");
             connection = new NetConnection(url);
 
+            INFO("MARK 2");
+            setupConnection(connection, method, headers, session);
+
             INFO("MARK 3");
-            try {
-                connection.setRequestMethod(method);
-
-                INFO("MARK 4");
-                if (headers != null) {
-                    INFO("headers size is " + headers.size());
-                    for (Map.Entry<String, String> e : headers.entrySet()) {
-                        INFO("header '" + e.getKey() + "': '" + e.getValue() + "'");
-                        connection.setRequestProperty(e.getKey(), e.getValue());
-                    }
-                }
-
-                INFO("MARK 5");
-                if (session != null && !session.isEmpty()) {
-                    connection.setRequestProperty("Cookie", session);
-                }
-
-                INFO("MARK 6");
-                if ("POST".equals(method) && body != null) {
-                    NetConnectionWriter writer = connection.getWriter();
-                    writer.write(body);
-                    writer.close();
-                }
-
-                INFO("MARK 7");
-                String response_body = readResponseBody(connection);
-                INFO("response body size is " + response_body.length());
-
-                INFO("MARK 8");
-                return new NetResponse(connection.getResponseCode(), response_body, connection.getCookies());
-            } finally {
-                INFO("MARK 9");
-                connection.disconnect();
+            if ("POST".equals(method) && body != null) {
+                connection.writeRequestBody(body);
             }
+
+            INFO("MARK 4");
+            return connection;
         } catch (IOException e) {
             INFO("exception is [" + e.getMessage() + "]");
-            int response_code = -1;
-            if (connection != null) {
-                response_code = connection.getResponseCode();
-            }
-            INFO("response code is " + response_code);
-            return new NetResponse(response_code, null, null);
+            return failedNetConnection;
         }
     }
 
     private NetResponse pushMultipartData_(
-        String url_,
+        String url,
         List<MultipartItem> items,
         String session,
         Map<String, String> headers
     )
     {
         INFO("pushMultipartData_");
-        INFO("url is [" + url_ + "]");
+        INFO("url is [" + url + "]");
         INFO("session is [" + session + "]");
         INFO("headers are " + ((headers == null) ? "null" : "not null"));
 
-        INFO("number of parts is " + items.size());
-        MultipartEntityBuilder builder = MultipartEntityBuilder.create();
-        for (MultipartItem item : items) {
-            if (item.filePath == null || item.filePath.isEmpty()) {
-                INFO("part is [" + item.name + "], [" + item.body + "]");
-                builder.addTextBody(item.name, item.body);
-            } else {
-                // TODO: add file support
-                assert false;
-            }
-        }
-        HttpEntity entity = builder.build();
-
-        HttpURLConnection connection = null;
+        NetConnection connection = null;
         try {
             INFO("MARK 1");
-            URL url = new URL(url_);
+            connection = new NetConnection(url);
 
             INFO("MARK 2");
-            connection = (HttpURLConnection) url.openConnection();
-            INFO("MARK 3");
             try {
-                connection.setRequestMethod("POST");
+                setupConnection(connection, "POST", headers, session);
+
+                INFO("MARK 3");
+                connection.setMultipartData(items);
 
                 INFO("MARK 4");
-                if (headers != null) {
-                    INFO("headers size is " + headers.size());
-                    for (Map.Entry<String, String> e : headers.entrySet()) {
-                        INFO("header '" + e.getKey() + "': '" + e.getValue() + "'");
-                        connection.setRequestProperty(e.getKey(), e.getValue());
-                    }
-                }
-
-                INFO("MARK 5");
-                if (session != null && !session.isEmpty()) {
-                    connection.setRequestProperty("Cookie", session);
-                }
-
-                INFO("MARK 6");
-                connection.addRequestProperty("Content-length", "" + entity.getContentLength());
-                connection.addRequestProperty(
-                    entity.getContentType().getName(),
-                    entity.getContentType().getValue()
+                return new NetResponse(
+                    connection.getResponseCode(),
+                    connection.readAllResponseBody(),
+                    connection.getCookies()
                 );
-
-                INFO("MARK 7");
-                OutputStream os = connection.getOutputStream();
-                entity.writeTo(os);
-                os.close();
-
-                INFO("MARK 8");
-                String response_body = readResponseBody(connection);
-                INFO("response body size is " + response_body.length());
-
-                INFO("MARK 9");
-
-                return new NetResponse(connection.getResponseCode(), response_body, readCookies(connection));
             } finally {
-                INFO("MARK 10");
+                INFO("MARK 5");
                 connection.disconnect();
             }
         } catch (IOException e) {
             INFO("exception is [" + e.getMessage() + "]");
-            int response_code = -1;
-            if (connection != null) {
-                try {
-                    response_code = connection.getResponseCode();
-                } catch (IOException ee) {
-                    INFO("response code exception is [" + ee.getMessage() + "]");
-                }
-            }
-            INFO("response code is " + response_code);
-            return new NetResponse(response_code, null, null);
+            return new NetResponse(getResponseCode(connection), null, null);
         }
     }
 
-    private static String convertStreamToString(InputStream is)
+    private static void setupConnection(
+        NetConnection connection,
+        String method,
+        Map<String, String> headers,
+        String session
+    ) throws ProtocolException
     {
-        Scanner s = new Scanner(is).useDelimiter("\\A");
-        return s.hasNext() ? s.next() : "";
-    }
+        connection.setRequestMethod(method);
 
-    private static String readResponseBody(HttpURLConnection connection) throws IOException
-    {
-        return convertStreamToString(new BufferedInputStream(connection.getInputStream()));
-    }
-
-    private static String readResponseBody(NetConnection connection) throws IOException
-    {
-        NetConnectionReader reader = connection.getReader();
-        String response_body = reader.readAll();
-        reader.close();
-        return response_body;
-    }
-
-    private static String readCookies(HttpURLConnection connection)
-    {
-        StringBuilder sb = new StringBuilder();
-        List<String> headers = connection.getHeaderFields().get("Set-Cookie");
         if (headers != null) {
-            for (String header : headers) {
-                for (HttpCookie cookie : HttpCookie.parse(header)) {
-                    sb.append(cookie.getName()).append('=').append(cookie.getValue()).append(';');
-                }
+            INFO("headers size is " + headers.size());
+            for (Map.Entry<String, String> e : headers.entrySet()) {
+                INFO("header '" + e.getKey() + "': '" + e.getValue() + "'");
+                connection.setRequestProperty(e.getKey(), e.getValue());
             }
         }
-        String s = sb.toString();
-        INFO("cookies are [" + s + "]");
-        return s;
+
+        if (session != null && !session.isEmpty()) {
+            connection.setRequestProperty("Cookie", session);
+        }
+    }
+
+    private static int getResponseCode(INetConnection connection)
+    {
+        int response_code = (connection == null) ? -1 : connection.getResponseCode();
+        INFO("response code is " + response_code);
+        return response_code;
     }
 }
