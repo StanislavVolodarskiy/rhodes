@@ -35,8 +35,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.StringWriter;
 import java.io.PrintWriter;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 
 import android.content.res.AssetManager;
+import android.os.AsyncTask;
 
 public class Utils {
 	
@@ -231,4 +234,24 @@ public class Utils {
         return (e.toString() + "\n" + sw.toString());
 	}
 	
+    public static <T> T computeAsync(final Callable<T> f, final T failed)
+    {
+        AsyncTask<Void, Void, T> task = new AsyncTask<Void, Void, T>() {
+            protected T doInBackground(Void... _) {
+                try {
+                    return f.call();
+                } catch (Exception e) {
+                    return failed;
+                }
+            }
+        };
+        task.execute();
+        try {
+            return task.get();
+        } catch (InterruptedException e) {
+            return failed;
+        } catch (ExecutionException e) {
+            return failed;
+        }
+    }
 }

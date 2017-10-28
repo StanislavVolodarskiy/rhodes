@@ -4,10 +4,11 @@ import java.io.IOException;
 import java.net.ProtocolException;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Callable;
 
 import org.apache.http.entity.mime.MultipartEntityBuilder;
-import android.os.AsyncTask;
+
+import com.rhomobile.rhodes.util.Utils;
 
 public class NetRequest
 {
@@ -25,103 +26,38 @@ public class NetRequest
         @Override public void disconnect() { }
     };
 
-    private static class Request
-    {
-        public final String method;
-        public final String url;
-        public final String body;
-        public final String session;
-        public final Map<String, String> headers;
-
-        public Request(String method, String url, String body, String session, Map<String, String> headers)
-        {
-            this.method = method;
-            this.url = url;
-            this.body = body;
-            this.session = session;
-            this.headers = headers;
-        }
-    }
-
-    private static class MultipartRequest
-    {
-        public final String url;
-        public final List<MultipartItem> items;
-        public final String session;
-        public final Map<String, String> headers;
-
-        public MultipartRequest(
-            String url,
-            List<MultipartItem> items,
-            String session,
-            Map<String, String> headers
-        )
-        {
-            this.url = url;
-            this.items = items;
-            this.session = session;
-            this.headers = headers;
-        }
-    }
-
-    private class RequestTask extends AsyncTask<Request, Void, INetConnection>
-    {
-        protected INetConnection doInBackground(Request... requests) {
-            assert requests.length == 1;
-            Request request = requests[0];
-            return doRequest_(request.method, request.url, request.body, request.session, request.headers);
-        }
-    }
-
-    private class MultipartRequestTask extends AsyncTask<MultipartRequest, Void, NetResponse>
-    {
-        protected NetResponse doInBackground(MultipartRequest... requests) {
-            assert requests.length == 1;
-            MultipartRequest request = requests[0];
-            return pushMultipartData_(request.url, request.items, request.session, request.headers);
-        }
-    }
+    private static final NetResponse failedNetResponse = new NetResponse(-1, null, null);
 
     public INetConnection doRequest(
-        String method,
-        String url,
-        String body,
-        String session,
-        Map<String, String> headers
+        final String method,
+        final String url,
+        final String body,
+        final String session,
+        final Map<String, String> headers
     )
     {
-        AsyncTask<Request, Void, INetConnection> task = new RequestTask().execute(
-            new Request(method, url, body, session, headers)
-        );
-        try {
-            return task.get();
-        } catch (InterruptedException e) {
-            return failedNetConnection;
-        } catch (ExecutionException e) {
-            return failedNetConnection;
-        }
+        return Utils.computeAsync(new Callable<INetConnection>() {
+            public INetConnection call() {
+                return doRequest_(method, url, body, session, headers);
+            }
+        }, failedNetConnection);
     }
 
     public NetResponse pushMultipartData(
-        String url,
-        List<MultipartItem> items,
-        String session,
-        Map<String, String> headers
+        final String url,
+        final List<MultipartItem> items,
+        final String session,
+        final Map<String, String> headers
     )
     {
-        AsyncTask<MultipartRequest, Void, NetResponse> task = new MultipartRequestTask().execute(
-            new MultipartRequest(url, items, session, headers)
-        );
-        try {
-            return task.get();
-        } catch (InterruptedException e) {
-            return new NetResponse(-1, null, null);
-        } catch (ExecutionException e) {
-            return new NetResponse(-1, null, null);
-        }
+        return Utils.computeAsync(new Callable<NetResponse>() {
+            public NetResponse call() {
+                return pushMultipartData_(url, items, session, headers);
+            }
+        }, failedNetResponse);
     }
 
-    private INetConnection doRequest_(
+    private static INetConnection doRequest_(
         String method,
         String url,
         String body,
@@ -157,7 +93,7 @@ public class NetRequest
         }
     }
 
-    private NetResponse pushMultipartData_(
+    public static NetResponse pushMultipartData_(
         String url,
         List<MultipartItem> items,
         String session,

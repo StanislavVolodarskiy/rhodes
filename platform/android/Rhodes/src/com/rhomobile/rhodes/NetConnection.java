@@ -12,9 +12,12 @@ import java.net.HttpURLConnection;
 import java.net.ProtocolException;
 import java.net.URL;
 import java.util.List;
+import java.util.concurrent.Callable;
 
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.HttpEntity;
+
+import com.rhomobile.rhodes.util.Utils;
 
 public class NetConnection implements INetConnection
 {
@@ -28,9 +31,9 @@ public class NetConnection implements INetConnection
         private final InputStream is;
         private boolean closed;
 
-        public Reader(HttpURLConnection connection) throws IOException
+        public Reader(InputStream is)
         {
-            is = new BufferedInputStream(connection.getInputStream());
+            this.is = is;
             closed = false;
         }
 
@@ -41,14 +44,10 @@ public class NetConnection implements INetConnection
             }
 
             byte[] data = new byte[n];
-            int m = 0;
-            while (m < n) {
-                int i = is.read(data, m, n - m);
-                if (i == -1) {
-                    close();
-                    break;
-                }
-                m += i;
+            int m = is.read(data, 0, n);
+            if (m == -1) {
+                close();
+                return "";
             }
             return new String(data, 0, m);
         }
@@ -129,28 +128,23 @@ public class NetConnection implements INetConnection
     }
 
     @Override
-    public String readResponseBody(int n)
+    public String readResponseBody(final int n)
     {
-        String response_body = null;
-        try {
-            response_body = getReader().read(n);
-        } catch (IOException e) {
-            INFO("response body exception is [" + e.getMessage() + "]");
-        }
-        return response_body;
+        return Utils.computeAsync(new Callable<String>() {
+            public String call() {
+                return readResponseBody_(n);
+            }
+        }, null);
     }
 
     @Override
     public String readAllResponseBody()
     {
-        String response_body = null;
-        try {
-            response_body = getReader().readAll();
-            INFO("response body size is " + response_body.length());
-        } catch (IOException e) {
-            INFO("response body exception is [" + e.getMessage() + "]");
-        }
-        return response_body;
+        return Utils.computeAsync(new Callable<String>() {
+            public String call() {
+                return readAllResponseBody_();
+            }
+        }, null);
     }
 
     @Override
@@ -188,10 +182,33 @@ public class NetConnection implements INetConnection
         connection.disconnect();
     }
 
+    private String readResponseBody_(int n)
+    {
+        String response_body = null;
+        try {
+            response_body = getReader().read(n);
+        } catch (IOException e) {
+            INFO("response body exception is [" + e.getMessage() + "]");
+        }
+        return response_body;
+    }
+
+    private String readAllResponseBody_()
+    {
+        String response_body = null;
+        try {
+            response_body = getReader().readAll();
+            INFO("response body size is " + response_body.length());
+        } catch (IOException e) {
+            INFO("response body exception is [" + e.getMessage() + "]");
+        }
+        return response_body;
+    }
+
     private Reader getReader() throws IOException
     {
         if (reader == null) {
-            reader = new Reader(connection);
+            reader = new Reader(connection.getInputStream());
         }
         return reader;
     }
