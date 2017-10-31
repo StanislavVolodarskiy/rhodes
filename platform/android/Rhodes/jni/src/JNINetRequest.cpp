@@ -196,17 +196,22 @@ int pull_file(
 {
     int response_code = -1;
     for (int n = 0; n < 10; ++n) {
-        jobject connection = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
-        while (call_net_connection_write_body(connection, 16384, file)) {
-        }
-        file.flush();
+        bool have_read = true;
+        while (have_read) {
+            jobject connection = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
+            have_read = false;
+            while (call_net_connection_write_body(connection, 16384, file)) {
+                have_read = true;
+            }
+            file.flush();
 
-        response_code = call_net_connection_response_code(connection);
-        switch (response_code) {
-        case 416:
-            // simulate successful completion
-        case 206:
-            return 206;
+            response_code = call_net_connection_response_code(connection);
+            switch (response_code) {
+            case 416:
+                // simulate successful completion
+            case 206:
+                return 206;
+            }
         }
     }
     return response_code;
