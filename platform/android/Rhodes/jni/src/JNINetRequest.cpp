@@ -41,7 +41,7 @@ static jobject call_net_request_push_multipart_data(
 static int call_net_response_response_code(jobject response);
 static rho::String call_net_response_body(jobject response);
 static rho::String call_net_response_cookies(jobject response);
-static rho::String call_net_connection_body(jobject connection, int n);
+static bool call_net_connection_write_body(jobject connection, int n, rho::common::CRhoFile& file);
 static rho::String call_net_connection_all_body(jobject connection);
 static int call_net_connection_response_code(jobject connection);
 static rho::String call_net_connection_cookies(jobject connection);
@@ -197,14 +197,9 @@ int pull_file(
     int response_code = -1;
     for (int n = 0; n < 10; ++n) {
         jobject connection = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
-        while (true) {
-            rho::String body = call_net_connection_body(connection, 16384);
-            if (body.size() == 0) {
-                file.flush();
-                break;
-            }
-            file.write(body.c_str(), body.size());
+        while (call_net_connection_write_body(connection, 16384, file)) {
         }
+        file.flush();
 
         response_code = call_net_connection_response_code(connection);
         switch (response_code) {
@@ -371,14 +366,24 @@ rho::String call_net_response_cookies(jobject response)
     return rho_cast<rho::String>(env, cookies);
 }
 
-rho::String call_net_connection_body(jobject connection, int n)
+bool call_net_connection_write_body(jobject connection, int n, rho::common::CRhoFile& file)
 {
     JNIEnv *env = jnienv();
 
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
-    jmethodID method = getJNIClassMethod(env, class_, "readResponseBody", "(I)Ljava/lang/String;");
-    jhstring body = static_cast<jstring>(env->CallObjectMethod(connection, method, n));
-    return rho_cast<rho::String>(env, body);
+    jmethodID method = getJNIClassMethod(env, class_, "readResponseBody", "(I)[B");
+    jbyteArray body = static_cast<jbyteArray>(env->CallObjectMethod(connection, method, n));
+    if (body == NULL) {
+        return false;
+    }
+    jsize size = env->GetArrayLength(body);
+    if (size == 0) {
+        return false;
+    }
+    jbyte *pData = env->GetByteArrayElements(body, NULL);
+    file.write(pData, size);
+    env->ReleaseByteArrayElements(body, pData, JNI_ABORT);
+    return true;
 }
 
 rho::String call_net_connection_all_body(jobject connection)
@@ -386,9 +391,16 @@ rho::String call_net_connection_all_body(jobject connection)
     JNIEnv *env = jnienv();
 
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
-    jmethodID method = getJNIClassMethod(env, class_, "readAllResponseBody", "()Ljava/lang/String;");
-    jhstring body = static_cast<jstring>(env->CallObjectMethod(connection, method));
-    return rho_cast<rho::String>(env, body);
+    jmethodID method = getJNIClassMethod(env, class_, "readAllResponseBody", "()[B");
+    jbyteArray body = static_cast<jbyteArray>(env->CallObjectMethod(connection, method));
+    if (body == NULL) {
+        return "";
+    }
+    jsize size = env->GetArrayLength(body);
+    jbyte *pData = env->GetByteArrayElements(body, NULL);
+    rho::String body_s(reinterpret_cast<char *>(pData), size);
+    env->ReleaseByteArrayElements(body, pData, JNI_ABORT);
+    return body_s;
 }
 
 int call_net_connection_response_code(jobject connection)

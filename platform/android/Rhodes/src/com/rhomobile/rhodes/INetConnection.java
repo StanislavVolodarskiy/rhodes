@@ -2,8 +2,8 @@ package com.rhomobile.rhodes;
 
 public interface INetConnection
 {
-    String readResponseBody(int n);
-    String readAllResponseBody();
+    byte[] readResponseBody(int n);
+    byte[] readAllResponseBody();
     int getResponseCode();
     String getCookies();
     void disconnect();

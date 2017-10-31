@@ -19,8 +19,8 @@ public class NetRequest
 
     private static final INetConnection failedNetConnection = new INetConnection()
     {
-        @Override public String readResponseBody(int n) { return null; }
-        @Override public String readAllResponseBody() { return null; }
+        @Override public byte[] readResponseBody(int n) { return null; }
+        @Override public byte[] readAllResponseBody() { return null; }
         @Override public int getResponseCode() { return -1; }
         @Override public String getCookies() { return null; }
         @Override public void disconnect() { }
@@ -118,13 +118,16 @@ public class NetRequest
                 connection.setMultipartData(items);
 
                 INFO("MARK 4");
+                byte[] body = connection.readAllResponseBody();
+
+                INFO("MARK 5");
                 return new NetResponse(
                     connection.getResponseCode(),
-                    connection.readAllResponseBody(),
+                    (body == null) ? null : new String(body),
                     connection.getCookies()
                 );
             } finally {
-                INFO("MARK 5");
+                INFO("MARK 6");
                 connection.disconnect();
             }
         } catch (IOException e) {

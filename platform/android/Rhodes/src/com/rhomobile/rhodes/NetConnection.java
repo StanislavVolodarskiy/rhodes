@@ -37,41 +37,43 @@ public class NetConnection implements INetConnection
             closed = false;
         }
 
-        public String read(int n) throws IOException
+        public byte[] read(int n) throws IOException
         {
             if (closed) {
-                return "";
+                return new byte[0];
             }
 
             byte[] data = new byte[n];
             int m = is.read(data, 0, n);
             if (m == -1) {
                 close();
-                return "";
+                return new byte[0];
             }
-            return new String(data, 0, m);
+            if (m < n) {
+                // shrink data array
+                byte[] temp = new byte[m];
+                System.arraycopy(data, 0, temp, 0, m);
+                data = temp;
+            }
+            return data;
         }
 
-        public String readAll() throws IOException
+        public byte[] readAll() throws IOException
         {
-            if (closed) {
-                return "";
-            }
-
             ByteArrayOutputStream os = new ByteArrayOutputStream();
-
-            byte[] data = new byte[16384];
-            while (true) {
-                int n = is.read(data, 0, data.length);
-                if (n == -1) {
-                    break;
+            if (!closed) {
+                byte[] data = new byte[16384];
+                while (true) {
+                    int n = is.read(data, 0, data.length);
+                    if (n == -1) {
+                        break;
+                    }
+                    os.write(data, 0, n);
                 }
-                os.write(data, 0, n);
+                os.flush();
+                close();
             }
-
-            os.flush();
-            close();
-            return new String(os.toByteArray());
+            return os.toByteArray();
         }
 
         private void close() throws IOException
@@ -128,20 +130,20 @@ public class NetConnection implements INetConnection
     }
 
     @Override
-    public String readResponseBody(final int n)
+    public byte[] readResponseBody(final int n)
     {
-        return Utils.computeAsync(new Callable<String>() {
-            public String call() {
+        return Utils.computeAsync(new Callable<byte[]>() {
+            public byte[] call() {
                 return readResponseBody_(n);
             }
         }, null);
     }
 
     @Override
-    public String readAllResponseBody()
+    public byte[] readAllResponseBody()
     {
-        return Utils.computeAsync(new Callable<String>() {
-            public String call() {
+        return Utils.computeAsync(new Callable<byte[]>() {
+            public byte[] call() {
                 return readAllResponseBody_();
             }
         }, null);
@@ -182,23 +184,24 @@ public class NetConnection implements INetConnection
         connection.disconnect();
     }
 
-    private String readResponseBody_(int n)
+    private byte[] readResponseBody_(int n)
     {
-        String response_body = null;
+        byte[] response_body = null;
         try {
             response_body = getReader().read(n);
+            INFO("response body read size is " + response_body.length);
         } catch (IOException e) {
             INFO("response body exception is [" + e.getMessage() + "]");
         }
         return response_body;
     }
 
-    private String readAllResponseBody_()
+    private byte[] readAllResponseBody_()
     {
-        String response_body = null;
+        byte[] response_body = null;
         try {
             response_body = getReader().readAll();
-            INFO("response body size is " + response_body.length());
+            INFO("response body size is " + response_body.length);
         } catch (IOException e) {
             INFO("response body exception is [" + e.getMessage() + "]");
         }
