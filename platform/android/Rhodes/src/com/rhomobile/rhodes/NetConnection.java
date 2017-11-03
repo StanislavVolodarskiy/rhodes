@@ -14,6 +14,8 @@ import java.net.URL;
 import java.util.List;
 import java.util.concurrent.Callable;
 
+import android.os.Looper;
+
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.HttpEntity;
 
@@ -88,6 +90,8 @@ public class NetConnection implements INetConnection
 
     public NetConnection(String url) throws IOException
     {
+        assert Looper.getMainLooper().getThread() != Thread.currentThread();
+
         connection = (HttpURLConnection) new URL(url).openConnection();
         reader = null;
     }
@@ -114,6 +118,8 @@ public class NetConnection implements INetConnection
         connection.addRequestProperty("Content-length", "" + entity.getContentLength());
         connection.addRequestProperty(entity.getContentType().getName(), entity.getContentType().getValue());
 
+        assert Looper.getMainLooper().getThread() != Thread.currentThread();
+
         OutputStream os = connection.getOutputStream();
         entity.writeTo(os);
         os.close();
@@ -121,6 +127,8 @@ public class NetConnection implements INetConnection
 
     public void writeRequestBody(String body) throws IOException
     {
+        assert Looper.getMainLooper().getThread() != Thread.currentThread();
+
         OutputStream os = connection.getOutputStream();
         BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"));
         writer.write(body);
@@ -134,7 +142,7 @@ public class NetConnection implements INetConnection
     {
         return Utils.computeAsync(new Callable<byte[]>() {
             public byte[] call() {
-                return readResponseBody_(n);
+                return readResponseBodySync(n);
             }
         }, null);
     }
@@ -144,7 +152,7 @@ public class NetConnection implements INetConnection
     {
         return Utils.computeAsync(new Callable<byte[]>() {
             public byte[] call() {
-                return readAllResponseBody_();
+                return readAllResponseBodySync();
             }
         }, null);
     }
@@ -181,22 +189,19 @@ public class NetConnection implements INetConnection
     @Override
     public void disconnect()
     {
+        Utils.runAsync(new Runnable() {
+            public void run() {
+                disconnectSync();
+            }
+        });
+    }
+
+    public void disconnectSync()
+    {
         connection.disconnect();
     }
 
-    private byte[] readResponseBody_(int n)
-    {
-        byte[] response_body = null;
-        try {
-            response_body = getReader().read(n);
-            INFO("response body read size is " + response_body.length);
-        } catch (IOException e) {
-            INFO("response body exception is [" + e.getMessage() + "]");
-        }
-        return response_body;
-    }
-
-    private byte[] readAllResponseBody_()
+    public byte[] readAllResponseBodySync()
     {
         byte[] response_body = null;
         try {
@@ -208,9 +213,22 @@ public class NetConnection implements INetConnection
         return response_body;
     }
 
+    private byte[] readResponseBodySync(int n)
+    {
+        byte[] response_body = null;
+        try {
+            response_body = getReader().read(n);
+            INFO("response body read size is " + response_body.length);
+        } catch (IOException e) {
+            INFO("response body exception is [" + e.getMessage() + "]");
+        }
+        return response_body;
+    }
+
     private Reader getReader() throws IOException
     {
         if (reader == null) {
+            assert Looper.getMainLooper().getThread() != Thread.currentThread();
             reader = new Reader(connection.getInputStream());
         }
         return reader;

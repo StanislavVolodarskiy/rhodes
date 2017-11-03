@@ -118,7 +118,7 @@ public class NetRequest
                 connection.setMultipartData(items);
 
                 INFO("MARK 4");
-                byte[] body = connection.readAllResponseBody();
+                byte[] body = connection.readAllResponseBodySync();
 
                 INFO("MARK 5");
                 return new NetResponse(
@@ -128,7 +128,7 @@ public class NetRequest
                 );
             } finally {
                 INFO("MARK 6");
-                connection.disconnect();
+                connection.disconnectSync();
             }
         } catch (IOException e) {
             INFO("exception is [" + e.getMessage() + "]");
