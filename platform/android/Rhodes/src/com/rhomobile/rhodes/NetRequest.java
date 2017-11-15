@@ -26,6 +26,12 @@ public class NetRequest
     private static void INFO (String    msg) { Logger.I(TAG, msg); }
     private static void ERROR(Throwable ex ) { Logger.E(TAG, ex ); }
 
+    private static final INetConnection failedNetConnection = new INetConnection()
+    {
+        @Override public byte[] readResponseBody(int n) { return null; }
+        @Override public int getResponseCode() { return -1; }
+    };
+
     private static final NetResponse failedResponse = new NetResponse(-1, null, null);
 
     public NetResponse doRequest(
@@ -41,6 +47,21 @@ public class NetRequest
                 return doRequest_(method, url, body, session, headers);
             }
         }, failedResponse);
+    }
+
+    public INetConnection doRequest2(
+        final String method,
+        final String url,
+        final String body,
+        final String session,
+        final Map<String, String> headers
+    )
+    {
+        return Utils.computeAsync(new Callable<INetConnection>() {
+            public INetConnection call() {
+                return doRequest2_(method, url, body, session, headers);
+            }
+        }, failedNetConnection);
     }
 
     public NetResponse pushMultipartData(
@@ -136,6 +157,54 @@ public class NetRequest
             }
             INFO("response code is " + response_code);
             return new NetResponse(response_code, null, null);
+        }
+    }
+
+    private static INetConnection doRequest2_(
+        String method,
+        String url,
+        String body,
+        String session,
+        Map<String, String> headers
+    )
+    {
+        INFO("doRequest2_");
+        INFO("method is [" + method + "]");
+        INFO("url is [" + url + "]");
+        INFO("body is [" + body + "]");
+        INFO("session is [" + session + "]");
+        INFO("headers are " + ((headers == null) ? "null" : "not null"));
+
+        NetConnection connection = null;
+        try {
+            INFO("MARK 1");
+            connection = new NetConnection(url);
+
+            INFO("MARK 2");
+            connection.setRequestMethod(method);
+
+            if (headers != null) {
+                INFO("headers size is " + headers.size());
+                for (Map.Entry<String, String> e : headers.entrySet()) {
+                    INFO("header '" + e.getKey() + "': '" + e.getValue() + "'");
+                    connection.setRequestProperty(e.getKey(), e.getValue());
+                }
+            }
+
+            if (session != null && !session.isEmpty()) {
+                connection.setRequestProperty("Cookie", session);
+            }
+
+            INFO("MARK 3");
+            if ("POST".equals(method) && body != null) {
+                connection.writeRequestBody(body);
+            }
+
+            INFO("MARK 4");
+            return connection;
+        } catch (IOException e) {
+            INFO("exception is [" + e.getMessage() + "]");
+            return failedNetConnection;
         }
     }
 

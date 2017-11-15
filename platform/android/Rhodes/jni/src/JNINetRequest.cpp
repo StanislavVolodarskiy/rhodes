@@ -26,6 +26,13 @@ static jobject call_net_request_do_request(
           rho::net::IRhoSession* pSession,
     const rho::Hashtable<rho::String, rho::String>* pHeaders
 );
+static jobject call_net_request_do_request_2(
+    const char* method,
+    const rho::String& url,
+    const rho::String& body,
+          rho::net::IRhoSession* pSession,
+    const rho::Hashtable<rho::String, rho::String>* pHeaders
+);
 static jobject call_net_request_pull_file(
     const rho::String& url,
           long start_from,
@@ -41,6 +48,8 @@ static jobject call_net_request_push_multipart_data(
 static int call_net_response_response_code(jobject response);
 static rho::String call_net_response_body(jobject response);
 static rho::String call_net_response_cookies(jobject response);
+static bool call_net_connection_write_body(jobject connection, int n, rho::common::CRhoFile& file);
+static int call_net_connection_response_code(jobject connection);
 static rho::String get_session_string(rho::net::IRhoSession* pSession);
 static jobject new_hashmap(const rho::Hashtable<rho::String, rho::String>& headers);
 static rho::net::INetResponse* convert_net_response(jobject response);
@@ -190,20 +199,23 @@ int pull_file(
 {
     int response_code = -1;
     for (int n = 0; n < 10; ++n) {
-        jobject response = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
-        response_code = call_net_response_response_code(response);
-        switch (response_code) {
-        case 416:
-            // simulate successful completion
-            return 206;
-        case 206:
-            {
-                rho::String body = call_net_response_body(response);
-                file.write(body.c_str(), body.size());
-                file.flush();
+        bool have_read = true;
+        do {
+            jobject connection = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
+            have_read = false;
+            while (call_net_connection_write_body(connection, 16384, file)) {
+                have_read = true;
             }
-            return 206;
-        }
+            file.flush();
+
+            response_code = call_net_connection_response_code(connection);
+            switch (response_code) {
+            case 416:
+                // simulate successful completion
+            case 206:
+                return 206;
+            }
+        } while (have_read);
     }
     return response_code;
 }
@@ -248,6 +260,46 @@ jobject call_net_request_do_request(
     );
 }
 
+jobject call_net_request_do_request_2(
+    const char*        method,
+    const rho::String& url,
+    const rho::String& body,
+          rho::net::IRhoSession* pSession,
+    const rho::Hashtable<rho::String, rho::String>* pHeaders
+)
+{
+    JNIEnv *env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_NETREQUEST);
+    jmethodID constructor = getJNIClassMethod(env, class_, "<init>", "()V");
+    jmethodID do_request = getJNIClassMethod(
+        env,
+        class_,
+        "doRequest2",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)"
+        "Lcom/rhomobile/rhodes/INetConnection;"
+    );
+
+
+    jobject net_request = env->NewObject(class_, constructor);
+
+    jhstring method_j = rho_cast<jstring>(env, method);
+    jhstring url_j = rho_cast<jstring>(env, url);
+    jhstring body_j = rho_cast<jstring>(env, body);
+    jhstring session_j = rho_cast<jstring>(env, get_session_string(pSession));
+    jobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
+
+    return env->CallObjectMethod(
+        net_request,
+        do_request,
+        method_j.get(),
+        url_j.get(),
+        body_j.get(),
+        session_j.get(),
+        headers_j
+    );
+}
+
 jobject call_net_request_pull_file(
     const rho::String& url,
           long start_from,
@@ -263,7 +315,7 @@ jobject call_net_request_pull_file(
     oss << "bytes=" << start_from << "-";
     headers.put("Range", oss.str());
 
-    return call_net_request_do_request("GET", url, "", pSession, &headers);
+    return call_net_request_do_request_2("GET", url, "", pSession, &headers);
 }
 
 jobject call_net_request_push_multipart_data(
@@ -360,6 +412,35 @@ rho::String call_net_response_cookies(jobject response)
     jmethodID method = getJNIClassMethod(env, class_, "cookies", "()Ljava/lang/String;");
     jhstring cookies = static_cast<jstring>(env->CallObjectMethod(response, method));
     return rho_cast<rho::String>(env, cookies);
+}
+
+bool call_net_connection_write_body(jobject connection, int n, rho::common::CRhoFile& file)
+{
+    JNIEnv *env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
+    jmethodID method = getJNIClassMethod(env, class_, "readResponseBody", "(I)[B");
+    jbyteArray body = static_cast<jbyteArray>(env->CallObjectMethod(connection, method, n));
+    if (body == NULL) {
+        return false;
+    }
+    jsize size = env->GetArrayLength(body);
+    if (size == 0) {
+        return false;
+    }
+    jbyte *pData = env->GetByteArrayElements(body, NULL);
+    file.write(pData, size);
+    env->ReleaseByteArrayElements(body, pData, JNI_ABORT);
+    return true;
+}
+
+int call_net_connection_response_code(jobject connection)
+{
+    JNIEnv *env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
+    jmethodID method = getJNIClassMethod(env, class_, "getResponseCode", "()I");
+    return env->CallIntMethod(connection, method);
 }
 
 rho::net::INetResponse* convert_net_response(jobject response)

@@ -235,6 +235,24 @@ public class Utils {
         return (e.toString() + "\n" + sw.toString());
 	}
 	
+    public static void runAsync(final Runnable f)
+    {
+        assert Looper.getMainLooper().getThread() == Thread.currentThread();
+
+        AsyncTask<Void, Void, Void> task = new AsyncTask<Void, Void, Void>() {
+            protected Void doInBackground(Void... _) {
+                f.run();
+                return null;
+            }
+        };
+        task.execute();
+        try {
+            task.get();
+        } catch (InterruptedException e) {
+        } catch (ExecutionException e) {
+        }
+    }
+
     public static <T> T computeAsync(final Callable<T> f, final T failed)
     {
         assert Looper.getMainLooper().getThread() == Thread.currentThread();
