@@ -201,22 +201,29 @@ int pull_file(
     for (int n = 0; n < 10; ++n) {
         bool have_read = true;
         do {
+            RAWLOG_INFO("pull_file: 1");
             jobject connection = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
+            RAWLOG_INFO("pull_file: 2");
             have_read = false;
             while (call_net_connection_write_body(connection, 16384, file)) {
                 have_read = true;
             }
+            RAWLOG_INFO("pull_file: 3");
             file.flush();
+            RAWLOG_INFO("pull_file: 4");
 
             response_code = call_net_connection_response_code(connection);
+            RAWLOG_INFO("pull_file: 5");
             switch (response_code) {
             case 416:
                 // simulate successful completion
             case 206:
+                RAWLOG_INFO("pull_file: 6");
                 return 206;
             }
         } while (have_read);
     }
+    RAWLOG_INFO("pull_file: 7");
     return response_code;
 }
 
@@ -416,21 +423,32 @@ rho::String call_net_response_cookies(jobject response)
 
 bool call_net_connection_write_body(jobject connection, int n, rho::common::CRhoFile& file)
 {
+    RAWLOG_INFO("call_net_connection_write_body: 1");
     JNIEnv *env = jnienv();
 
+    RAWLOG_INFO("call_net_connection_write_body: 2");
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
     jmethodID method = getJNIClassMethod(env, class_, "readResponseBody", "(I)[B");
+    RAWLOG_INFO("call_net_connection_write_body: 3");
     jbyteArray body = static_cast<jbyteArray>(env->CallObjectMethod(connection, method, n));
+    RAWLOG_INFO("call_net_connection_write_body: 4");
     if (body == NULL) {
+        RAWLOG_INFO("call_net_connection_write_body: 5");
         return false;
     }
     jsize size = env->GetArrayLength(body);
+    RAWLOG_INFO("call_net_connection_write_body: 6");
     if (size == 0) {
+        RAWLOG_INFO("call_net_connection_write_body: 7");
         return false;
     }
+    RAWLOG_INFO("call_net_connection_write_body: 8");
     jbyte *pData = env->GetByteArrayElements(body, NULL);
+    RAWLOG_INFO("call_net_connection_write_body: 9");
     file.write(pData, size);
+    RAWLOG_INFO("call_net_connection_write_body: 10");
     env->ReleaseByteArrayElements(body, pData, JNI_ABORT);
+    RAWLOG_INFO("call_net_connection_write_body: 11");
     return true;
 }
 
