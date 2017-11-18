@@ -121,11 +121,13 @@ public class NetConnection implements INetConnection
     @Override
     public byte[] readResponseBody(final int n)
     {
-        return Utils.computeAsync(new Callable<byte[]>() {
+        byte[] data = Utils.computeAsync(new Callable<byte[]>() {
             public byte[] call() {
                 return readResponseBodySync(n);
             }
         }, null);
+        INFO("readResponseBody");
+        return data;
     }
 
     @Override
