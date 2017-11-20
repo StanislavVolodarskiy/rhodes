@@ -286,11 +286,14 @@ jobject call_net_request_do_request_2(
     const rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
-    RAWLOG_INFO("call_net_request_do_request_2");
+    RAWLOG_INFO("call_net_request_do_request_2: 1");
     JNIEnv *env = jnienv();
 
+    RAWLOG_INFO("call_net_request_do_request_2: 2");
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_NETREQUEST);
+    RAWLOG_INFO("call_net_request_do_request_2: 3");
     jmethodID constructor = getJNIClassMethod(env, class_, "<init>", "()V");
+    RAWLOG_INFO("call_net_request_do_request_2: 4");
     jmethodID do_request = getJNIClassMethod(
         env,
         class_,
@@ -299,16 +302,23 @@ jobject call_net_request_do_request_2(
         "Lcom/rhomobile/rhodes/INetConnection;"
     );
 
+    RAWLOG_INFO("call_net_request_do_request_2: 5");
 
     jobject net_request = env->NewObject(class_, constructor);
 
+    RAWLOG_INFO("call_net_request_do_request_2: 6");
     jhstring method_j = rho_cast<jstring>(env, method);
+    RAWLOG_INFO("call_net_request_do_request_2: 7");
     jhstring url_j = rho_cast<jstring>(env, url);
+    RAWLOG_INFO("call_net_request_do_request_2: 8");
     jhstring body_j = rho_cast<jstring>(env, body);
+    RAWLOG_INFO("call_net_request_do_request_2: 9");
     jhstring session_j = rho_cast<jstring>(env, get_session_string(pSession));
+    RAWLOG_INFO("call_net_request_do_request_2: 10");
     jobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
+    RAWLOG_INFO("call_net_request_do_request_2: 11");
 
-    return env->CallObjectMethod(
+    jobject connection = env->CallObjectMethod(
         net_request,
         do_request,
         method_j.get(),
@@ -317,6 +327,8 @@ jobject call_net_request_do_request_2(
         session_j.get(),
         headers_j
     );
+    RAWLOG_INFO("call_net_request_do_request_2: 12");
+    return connection;
 }
 
 jobject call_net_request_pull_file(
