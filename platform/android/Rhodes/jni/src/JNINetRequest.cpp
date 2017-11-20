@@ -286,6 +286,7 @@ jobject call_net_request_do_request_2(
     const rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
+    RAWLOG_INFO("call_net_request_do_request_2");
     JNIEnv *env = jnienv();
 
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_NETREQUEST);
@@ -325,6 +326,8 @@ jobject call_net_request_pull_file(
     const rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
+    RAWLOG_INFO("call_net_request_pull_file");
+
     rho::Hashtable<rho::String, rho::String> headers;
     if (pHeaders != NULL) {
         headers = *pHeaders;
