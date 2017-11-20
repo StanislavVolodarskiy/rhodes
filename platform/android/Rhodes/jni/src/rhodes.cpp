@@ -179,6 +179,12 @@ jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/)
     if (vm->GetEnv((void**)&env, jversion) != JNI_OK)
         return -1;
 
+    if (env->EnsureLocalCapacity(256) != 0)
+    {
+        RAWLOG_ERROR("EnsureLocalCapacity failed.");
+        return -1;
+    }
+
     pthread_key_create(&g_thrkey, NULL);
     store_thr_jnienv(env);
 
