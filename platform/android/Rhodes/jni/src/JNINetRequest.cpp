@@ -394,6 +394,7 @@ rho::String get_session_string(rho::net::IRhoSession* pSession)
 
 jobject new_hashmap(const rho::Hashtable<rho::String, rho::String>& headers)
 {
+    RAWLOG_INFO("new_hashmap: 1");
     JNIEnv *env = jnienv();
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_HASHMAP);
     jmethodID constructor = getJNIClassMethod(env, class_, "<init>", "()V");
@@ -404,16 +405,22 @@ jobject new_hashmap(const rho::Hashtable<rho::String, rho::String>& headers)
         "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"
     );
     jobject hashmap = env->NewObject(class_, constructor);
+    RAWLOG_INFO("new_hashmap: 2");
 
     for (
         rho::Hashtable<rho::String, rho::String>::const_iterator it = headers.begin();
         it != headers.end();
         ++it
     ) {
+        RAWLOG_INFO("new_hashmap: 3");
         jhstring key = rho_cast<jstring>(it->first);
+        RAWLOG_INFO("new_hashmap: 4");
         jhstring value = rho_cast<jstring>(it->second);
+        RAWLOG_INFO("new_hashmap: 5");
         env->CallObjectMethod(hashmap, put, key.get(), value.get());
+        RAWLOG_INFO("new_hashmap: 6");
     }
+    RAWLOG_INFO("new_hashmap: 7");
     return hashmap;
 }
 
