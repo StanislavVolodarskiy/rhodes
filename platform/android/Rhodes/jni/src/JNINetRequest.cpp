@@ -396,31 +396,35 @@ jobject new_hashmap(const rho::Hashtable<rho::String, rho::String>& headers)
 {
     RAWLOG_INFO("new_hashmap: 1");
     JNIEnv *env = jnienv();
+    RAWLOG_INFO("new_hashmap: 2");
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_HASHMAP);
+    RAWLOG_INFO("new_hashmap: 3");
     jmethodID constructor = getJNIClassMethod(env, class_, "<init>", "()V");
+    RAWLOG_INFO("new_hashmap: 4");
     jmethodID put = getJNIClassMethod(
         env,
         class_,
         "put",
         "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"
     );
+    RAWLOG_INFO("new_hashmap: 5");
     jobject hashmap = env->NewObject(class_, constructor);
-    RAWLOG_INFO("new_hashmap: 2");
+    RAWLOG_INFO("new_hashmap: 6");
 
     for (
         rho::Hashtable<rho::String, rho::String>::const_iterator it = headers.begin();
         it != headers.end();
         ++it
     ) {
-        RAWLOG_INFO("new_hashmap: 3");
+        RAWLOG_INFO("new_hashmap: 7");
         jhstring key = rho_cast<jstring>(it->first);
-        RAWLOG_INFO("new_hashmap: 4");
+        RAWLOG_INFO("new_hashmap: 8");
         jhstring value = rho_cast<jstring>(it->second);
-        RAWLOG_INFO("new_hashmap: 5");
+        RAWLOG_INFO("new_hashmap: 9");
         env->CallObjectMethod(hashmap, put, key.get(), value.get());
-        RAWLOG_INFO("new_hashmap: 6");
+        RAWLOG_INFO("new_hashmap: 10");
     }
-    RAWLOG_INFO("new_hashmap: 7");
+    RAWLOG_INFO("new_hashmap: 11");
     return hashmap;
 }
 
