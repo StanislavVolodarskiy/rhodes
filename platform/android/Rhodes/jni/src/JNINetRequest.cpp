@@ -144,6 +144,9 @@ rho::net::INetResponse* rho::net::JNINetRequest::doRequest(
 )
 {
     RAWLOG_INFO("UGU doRequest");
+    rho::Hashtable<rho::String, rho::String> headers;
+    new_hashmap(headers);
+    RAWLOG_INFO("UGU doRequest after new_hashmap(headers)");
     NetworkIndicator ni;
     return convert_net_response(call_net_request_do_request(method, url, body, pSession, pHeaders));
 }
