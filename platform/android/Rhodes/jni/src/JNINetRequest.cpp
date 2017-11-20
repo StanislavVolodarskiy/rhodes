@@ -48,7 +48,6 @@ static jobject call_net_request_push_multipart_data(
 static int call_net_response_response_code(jobject response);
 static rho::String call_net_response_body(jobject response);
 static rho::String call_net_response_cookies(jobject response);
-static bool call_net_connection_write_body(jobject connection, int n, rho::common::CRhoFile& file);
 static int call_net_connection_response_code(jobject connection);
 static rho::String get_session_string(rho::net::IRhoSession* pSession);
 static jobject new_hashmap(const rho::Hashtable<rho::String, rho::String>& headers);
@@ -103,28 +102,45 @@ private:
 };
 
 
-class JNINetRequest::Impl : public CURLNetRequest
+} // namespace net
+} // namespace rho
+
+
+class rho::net::JNINetRequest::Impl : public CURLNetRequest
 {
 };
 
-JNINetRequest::JNINetRequest()
+class ConnectionReader
+{
+public:
+    ConnectionReader();
+    bool read(jobject connection, rho::common::CRhoFile& file);
+
+private:
+    bool read_part(jobject connection, rho::common::CRhoFile& file);
+    JNIEnv *env;
+    jmethodID method;
+    jbyteArray data;
+};
+
+rho::net::JNINetRequest::JNINetRequest()
 : impl(new Impl)
 {
     RAWLOG_INFO("UGU constructor");
 }
 
-JNINetRequest::~JNINetRequest()
+rho::net::JNINetRequest::~JNINetRequest()
 {
     RAWLOG_INFO("UGU destructor");
     delete impl;
 }
 
-INetResponse* JNINetRequest::doRequest(
+rho::net::INetResponse* rho::net::JNINetRequest::doRequest(
     const char* method,
-    const String& url,
-    const String& body,
-    IRhoSession* pSession,
-    Hashtable<String, String>* pHeaders
+    const rho::String& url,
+    const rho::String& body,
+    rho::net::IRhoSession* pSession,
+    rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
     RAWLOG_INFO("UGU doRequest");
@@ -132,11 +148,11 @@ INetResponse* JNINetRequest::doRequest(
     return convert_net_response(call_net_request_do_request(method, url, body, pSession, pHeaders));
 }
 
-INetResponse* JNINetRequest::pullFile(
-    const String& url,
+rho::net::INetResponse* rho::net::JNINetRequest::pullFile(
+    const rho::String& url,
     rho::common::CRhoFile& file,
-    IRhoSession* pSession,
-    Hashtable<String, String>* pHeaders
+    rho::net::IRhoSession* pSession,
+    rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
     RAWLOG_INFO("UGU pullFile");
@@ -144,11 +160,11 @@ INetResponse* JNINetRequest::pullFile(
     return new rho::net::JNINetResponse("", pull_file(url, file, pSession, pHeaders), "", "");
 }
 
-INetResponse* JNINetRequest::pushMultipartData(
-    const String& url,
+rho::net::INetResponse* rho::net::JNINetRequest::pushMultipartData(
+    const rho::String& url,
     VectorPtr<CMultipartItem*>& items,
-    IRhoSession* pSession,
-    Hashtable<String, String>* pHeaders
+    rho::net::IRhoSession* pSession,
+    rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
     RAWLOG_INFO("UGU pushMultipartData");
@@ -156,38 +172,35 @@ INetResponse* JNINetRequest::pushMultipartData(
     return convert_net_response(call_net_request_push_multipart_data(url, items, pSession, pHeaders));
 }
 
-void JNINetRequest::cancel()
+void rho::net::JNINetRequest::cancel()
 {
     RAWLOG_INFO("UGU cancel");
     impl->cancel();
 }
 
-boolean JNINetRequest::getSslVerifyPeer()
+rho::boolean rho::net::JNINetRequest::getSslVerifyPeer()
 {
     RAWLOG_INFO("UGU getSslVerifyPeer");
     return impl->getSslVerifyPeer();
 }
 
-void JNINetRequest::setSslVerifyPeer(boolean mode)
+void rho::net::JNINetRequest::setSslVerifyPeer(boolean mode)
 {
     RAWLOG_INFO("UGU setSslVerifyPeer");
     impl->setSslVerifyPeer(mode);
 }
 
-INetResponse* JNINetRequest::createEmptyNetResponse()
+rho::net::INetResponse* rho::net::JNINetRequest::createEmptyNetResponse()
 {
     RAWLOG_INFO("UGU createEmptyNetResponse");
     return impl->createEmptyNetResponse();
 }
 
-void JNINetRequest::setCallback(INetRequestCallback* cb)
+void rho::net::JNINetRequest::setCallback(INetRequestCallback* cb)
 {
     RAWLOG_INFO("UGU setCallback");
     impl->setCallback(cb);
 }
-
-} // namespace net
-} // namespace rho
 
 
 int pull_file(
@@ -198,16 +211,14 @@ int pull_file(
 )
 {
     int response_code = -1;
+    ConnectionReader cr;
     for (int n = 0; n < 10; ++n) {
         bool have_read = true;
         do {
             RAWLOG_INFO("pull_file: 1");
             jobject connection = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
             RAWLOG_INFO("pull_file: 2");
-            have_read = false;
-            while (call_net_connection_write_body(connection, 16384, file)) {
-                have_read = true;
-            }
+            have_read = cr.read(connection, file);
             RAWLOG_INFO("pull_file: 3");
             file.flush();
             RAWLOG_INFO("pull_file: 4");
@@ -421,37 +432,6 @@ rho::String call_net_response_cookies(jobject response)
     return rho_cast<rho::String>(env, cookies);
 }
 
-bool call_net_connection_write_body(jobject connection, int n, rho::common::CRhoFile& file)
-{
-    RAWLOG_INFO("call_net_connection_write_body: 1");
-    JNIEnv *env = jnienv();
-
-    RAWLOG_INFO("call_net_connection_write_body: 2");
-    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
-    jmethodID method = getJNIClassMethod(env, class_, "readResponseBody", "(I)[B");
-    RAWLOG_INFO("call_net_connection_write_body: 3");
-    jbyteArray body = static_cast<jbyteArray>(env->CallObjectMethod(connection, method, n));
-    RAWLOG_INFO("call_net_connection_write_body: 4");
-    if (body == NULL) {
-        RAWLOG_INFO("call_net_connection_write_body: 5");
-        return false;
-    }
-    jsize size = env->GetArrayLength(body);
-    RAWLOG_INFO("call_net_connection_write_body: 6");
-    if (size == 0) {
-        RAWLOG_INFO("call_net_connection_write_body: 7");
-        return false;
-    }
-    RAWLOG_INFO("call_net_connection_write_body: 8");
-    jbyte *pData = env->GetByteArrayElements(body, NULL);
-    RAWLOG_INFO("call_net_connection_write_body: 9");
-    file.write(pData, size);
-    RAWLOG_INFO("call_net_connection_write_body: 10");
-    env->ReleaseByteArrayElements(body, pData, JNI_ABORT);
-    RAWLOG_INFO("call_net_connection_write_body: 11");
-    return true;
-}
-
 int call_net_connection_response_code(jobject connection)
 {
     JNIEnv *env = jnienv();
@@ -521,4 +501,42 @@ jobject new_multipart_items(const rho::VectorPtr<rho::net::CMultipartItem*>& ite
         }
     }
     return arraylist;
+}
+
+ConnectionReader::ConnectionReader()
+{
+    env = jnienv();
+
+    jclass class_ = getJNIClass(RHODES_JAVA_CLASS_INETCONNECTION);
+    method = getJNIClassMethod(env, class_, "readResponseBody", "([B)I");
+
+    data = env->NewByteArray(16384);
+}
+
+bool ConnectionReader::read(jobject connection, rho::common::CRhoFile& file)
+{
+    bool have_read = false;
+    while (read_part(connection, file)) {
+        have_read = true;
+    }
+    return have_read;
+}
+
+bool ConnectionReader::read_part(jobject connection, rho::common::CRhoFile& file)
+{
+    RAWLOG_INFO("ConnectionReader::read_part: 1");
+    jint n = env->CallIntMethod(connection, method, data);
+    RAWLOG_INFO("ConnectionReader::read_part: 2");
+    if (n == 0) {
+        RAWLOG_INFO("ConnectionReader::read_part: 3");
+        return false;
+    }
+    RAWLOG_INFO("ConnectionReader::read_part: 4");
+    jbyte *pData = env->GetByteArrayElements(data, NULL);
+    RAWLOG_INFO("ConnectionReader::read_part: 5");
+    file.write(pData, n);
+    RAWLOG_INFO("ConnectionReader::read_part: 6");
+    env->ReleaseByteArrayElements(data, pData, JNI_ABORT);
+    RAWLOG_INFO("ConnectionReader::read_part: 7");
+    return true;
 }

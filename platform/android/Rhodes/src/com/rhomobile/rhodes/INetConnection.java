@@ -2,6 +2,6 @@ package com.rhomobile.rhodes;
 
 public interface INetConnection
 {
-    byte[] readResponseBody(int n);
+    int readResponseBody(byte[] data);
     int getResponseCode();
 }

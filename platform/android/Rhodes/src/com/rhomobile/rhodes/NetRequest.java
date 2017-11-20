@@ -28,7 +28,7 @@ public class NetRequest
 
     private static final INetConnection failedNetConnection = new INetConnection()
     {
-        @Override public byte[] readResponseBody(int n) { return null; }
+        @Override public int readResponseBody(byte[] data) { return 0; }
         @Override public int getResponseCode() { return -1; }
     };
 

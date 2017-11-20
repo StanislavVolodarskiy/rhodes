@@ -39,43 +39,18 @@ public class NetConnection implements INetConnection
             closed = false;
         }
 
-        public byte[] read(int n) throws IOException
+        public int read(byte[] data) throws IOException
         {
             if (closed) {
-                return new byte[0];
+                return 0;
             }
 
-            byte[] data = new byte[n];
-            int m = is.read(data, 0, n);
-            if (m == -1) {
+            int n = is.read(data, 0, data.length);
+            if (n <= 0) {
                 close();
-                return new byte[0];
+                return 0;
             }
-            if (m < n) {
-                // shrink data array
-                byte[] temp = new byte[m];
-                System.arraycopy(data, 0, temp, 0, m);
-                data = temp;
-            }
-            return data;
-        }
-
-        public byte[] readAll() throws IOException
-        {
-            ByteArrayOutputStream os = new ByteArrayOutputStream();
-            if (!closed) {
-                byte[] data = new byte[16384];
-                while (true) {
-                    int n = is.read(data, 0, data.length);
-                    if (n == -1) {
-                        break;
-                    }
-                    os.write(data, 0, n);
-                }
-                os.flush();
-                close();
-            }
-            return os.toByteArray();
+            return n;
         }
 
         private void close() throws IOException
@@ -119,15 +94,15 @@ public class NetConnection implements INetConnection
     }
 
     @Override
-    public byte[] readResponseBody(final int n)
+    public int readResponseBody(final byte[] data)
     {
-        byte[] data = Utils.computeAsync(new Callable<byte[]>() {
-            public byte[] call() {
-                return readResponseBodySync(n);
+        int n = Utils.computeAsync(new Callable<Integer>() {
+            public Integer call() {
+                return readResponseBodySync(data);
             }
-        }, null);
+        }, 0);
         INFO("readResponseBody");
-        return data;
+        return n;
     }
 
     @Override
@@ -144,16 +119,16 @@ public class NetConnection implements INetConnection
         return response_code;
     }
 
-    private byte[] readResponseBodySync(int n)
+    private int readResponseBodySync(byte[] data)
     {
-        byte[] response_body = null;
+        int n = 0;
         try {
-            response_body = getReader().read(n);
-            INFO("response body read size is " + response_body.length);
+            n = getReader().read(data);
+            INFO("response body read size is " + n);
         } catch (IOException e) {
             INFO("response body exception is [" + e.getMessage() + "]");
         }
-        return response_body;
+        return n;
     }
 
     private Reader getReader() throws IOException
