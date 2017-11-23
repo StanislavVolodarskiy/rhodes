@@ -144,9 +144,6 @@ rho::net::INetResponse* rho::net::JNINetRequest::doRequest(
 )
 {
     RAWLOG_INFO("UGU doRequest");
-    rho::Hashtable<rho::String, rho::String> headers;
-    new_hashmap(headers);
-    RAWLOG_INFO("UGU doRequest after new_hashmap(headers)");
     NetworkIndicator ni;
     return convert_net_response(call_net_request_do_request(method, url, body, pSession, pHeaders));
 }
@@ -219,14 +216,14 @@ int pull_file(
         bool have_read = true;
         do {
             RAWLOG_INFO("pull_file: 1");
-            jobject connection = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
+            jhobject connection = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
             RAWLOG_INFO("pull_file: 2");
-            have_read = cr.read(connection, file);
+            have_read = cr.read(connection.get(), file);
             RAWLOG_INFO("pull_file: 3");
             file.flush();
             RAWLOG_INFO("pull_file: 4");
 
-            response_code = call_net_connection_response_code(connection);
+            response_code = call_net_connection_response_code(connection.get());
             RAWLOG_INFO("pull_file: 5");
             switch (response_code) {
             case 416:
@@ -262,22 +259,22 @@ jobject call_net_request_do_request(
     );
 
 
-    jobject net_request = env->NewObject(class_, constructor);
+    jhobject net_request = env->NewObject(class_, constructor);
 
     jhstring method_j = rho_cast<jstring>(env, method);
     jhstring url_j = rho_cast<jstring>(env, url);
     jhstring body_j = rho_cast<jstring>(env, body);
     jhstring session_j = rho_cast<jstring>(env, get_session_string(pSession));
-    jobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
+    jhobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
 
     return env->CallObjectMethod(
-        net_request,
+        net_request.get(),
         do_request,
         method_j.get(),
         url_j.get(),
         body_j.get(),
         session_j.get(),
-        headers_j
+        headers_j.get()
     );
 }
 
@@ -307,7 +304,7 @@ jobject call_net_request_do_request_2(
 
     RAWLOG_INFO("call_net_request_do_request_2: 5");
 
-    jobject net_request = env->NewObject(class_, constructor);
+    jhobject net_request = env->NewObject(class_, constructor);
 
     RAWLOG_INFO("call_net_request_do_request_2: 6");
     jhstring method_j = rho_cast<jstring>(env, method);
@@ -318,17 +315,17 @@ jobject call_net_request_do_request_2(
     RAWLOG_INFO("call_net_request_do_request_2: 9");
     jhstring session_j = rho_cast<jstring>(env, get_session_string(pSession));
     RAWLOG_INFO("call_net_request_do_request_2: 10");
-    jobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
+    jhobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
     RAWLOG_INFO("call_net_request_do_request_2: 11");
 
     jobject connection = env->CallObjectMethod(
-        net_request,
+        net_request.get(),
         do_request,
         method_j.get(),
         url_j.get(),
         body_j.get(),
         session_j.get(),
-        headers_j
+        headers_j.get()
     );
     RAWLOG_INFO("call_net_request_do_request_2: 12");
     return connection;
@@ -373,20 +370,20 @@ jobject call_net_request_push_multipart_data(
         "Lcom/rhomobile/rhodes/NetResponse;"
     );
 
-    jobject net_request = env->NewObject(class_, constructor);
+    jhobject net_request = env->NewObject(class_, constructor);
 
     jhstring url_j = rho_cast<jstring>(env, url);
-    jobject items_j = new_multipart_items(items);
+    jhobject items_j = new_multipart_items(items);
     jhstring session_j = rho_cast<jstring>(env, get_session_string(pSession));
-    jobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
+    jhobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
 
     return env->CallObjectMethod(
-        net_request,
+        net_request.get(),
         do_push_multipart_data,
         url_j.get(),
-        items_j,
+        items_j.get(),
         session_j.get(),
-        headers_j
+        headers_j.get()
     );
 }
 
@@ -526,7 +523,8 @@ jobject new_multipart_items(const rho::VectorPtr<rho::net::CMultipartItem*>& ite
         ++it
     ) {
         if (*it != NULL) {
-            env->CallObjectMethod(arraylist, add, new_multipart_item(**it));
+            jhobject multipart_item = new_multipart_item(**it);
+            env->CallObjectMethod(arraylist, add, multipart_item.get());
         }
     }
     return arraylist;
