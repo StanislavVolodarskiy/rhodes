@@ -101,7 +101,6 @@ public class NetConnection implements INetConnection
                 return readResponseBodySync(data);
             }
         }, 0);
-        INFO("readResponseBody");
         return n;
     }
 

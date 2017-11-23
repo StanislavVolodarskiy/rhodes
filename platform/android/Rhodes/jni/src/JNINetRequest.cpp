@@ -215,26 +215,19 @@ int pull_file(
     for (int n = 0; n < 10; ++n) {
         bool have_read = true;
         do {
-            RAWLOG_INFO("pull_file: 1");
             jhobject connection = call_net_request_pull_file(url, file.size(), pSession, pHeaders);
-            RAWLOG_INFO("pull_file: 2");
             have_read = cr.read(connection.get(), file);
-            RAWLOG_INFO("pull_file: 3");
             file.flush();
-            RAWLOG_INFO("pull_file: 4");
 
             response_code = call_net_connection_response_code(connection.get());
-            RAWLOG_INFO("pull_file: 5");
             switch (response_code) {
             case 416:
                 // simulate successful completion
             case 206:
-                RAWLOG_INFO("pull_file: 6");
                 return 206;
             }
         } while (have_read);
     }
-    RAWLOG_INFO("pull_file: 7");
     return response_code;
 }
 
@@ -286,14 +279,10 @@ jobject call_net_request_do_request_2(
     const rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
-    RAWLOG_INFO("call_net_request_do_request_2: 1");
     JNIEnv *env = jnienv();
 
-    RAWLOG_INFO("call_net_request_do_request_2: 2");
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_NETREQUEST);
-    RAWLOG_INFO("call_net_request_do_request_2: 3");
     jmethodID constructor = getJNIClassMethod(env, class_, "<init>", "()V");
-    RAWLOG_INFO("call_net_request_do_request_2: 4");
     jmethodID do_request = getJNIClassMethod(
         env,
         class_,
@@ -302,21 +291,13 @@ jobject call_net_request_do_request_2(
         "Lcom/rhomobile/rhodes/INetConnection;"
     );
 
-    RAWLOG_INFO("call_net_request_do_request_2: 5");
-
     jhobject net_request = env->NewObject(class_, constructor);
 
-    RAWLOG_INFO("call_net_request_do_request_2: 6");
     jhstring method_j = rho_cast<jstring>(env, method);
-    RAWLOG_INFO("call_net_request_do_request_2: 7");
     jhstring url_j = rho_cast<jstring>(env, url);
-    RAWLOG_INFO("call_net_request_do_request_2: 8");
     jhstring body_j = rho_cast<jstring>(env, body);
-    RAWLOG_INFO("call_net_request_do_request_2: 9");
     jhstring session_j = rho_cast<jstring>(env, get_session_string(pSession));
-    RAWLOG_INFO("call_net_request_do_request_2: 10");
     jhobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
-    RAWLOG_INFO("call_net_request_do_request_2: 11");
 
     jobject connection = env->CallObjectMethod(
         net_request.get(),
@@ -327,7 +308,6 @@ jobject call_net_request_do_request_2(
         session_j.get(),
         headers_j.get()
     );
-    RAWLOG_INFO("call_net_request_do_request_2: 12");
     return connection;
 }
 
@@ -338,8 +318,6 @@ jobject call_net_request_pull_file(
     const rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
-    RAWLOG_INFO("call_net_request_pull_file");
-
     rho::Hashtable<rho::String, rho::String> headers;
     if (pHeaders != NULL) {
         headers = *pHeaders;
@@ -394,37 +372,26 @@ rho::String get_session_string(rho::net::IRhoSession* pSession)
 
 jobject new_hashmap(const rho::Hashtable<rho::String, rho::String>& headers)
 {
-    RAWLOG_INFO("new_hashmap: 1");
     JNIEnv *env = jnienv();
-    RAWLOG_INFO("new_hashmap: 2");
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_HASHMAP);
-    RAWLOG_INFO("new_hashmap: 3");
     jmethodID constructor = getJNIClassMethod(env, class_, "<init>", "()V");
-    RAWLOG_INFO("new_hashmap: 4");
     jmethodID put = getJNIClassMethod(
         env,
         class_,
         "put",
         "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"
     );
-    RAWLOG_INFO("new_hashmap: 5");
     jobject hashmap = env->NewObject(class_, constructor);
-    RAWLOG_INFO("new_hashmap: 6");
 
     for (
         rho::Hashtable<rho::String, rho::String>::const_iterator it = headers.begin();
         it != headers.end();
         ++it
     ) {
-        RAWLOG_INFO("new_hashmap: 7");
         jhstring key = rho_cast<jstring>(it->first);
-        RAWLOG_INFO("new_hashmap: 8");
         jhstring value = rho_cast<jstring>(it->second);
-        RAWLOG_INFO("new_hashmap: 9");
         env->CallObjectMethod(hashmap, put, key.get(), value.get());
-        RAWLOG_INFO("new_hashmap: 10");
     }
-    RAWLOG_INFO("new_hashmap: 11");
     return hashmap;
 }
 
@@ -551,19 +518,12 @@ bool ConnectionReader::read(jobject connection, rho::common::CRhoFile& file)
 
 bool ConnectionReader::read_part(jobject connection, rho::common::CRhoFile& file)
 {
-    RAWLOG_INFO("ConnectionReader::read_part: 1");
     jint n = env->CallIntMethod(connection, method, data);
-    RAWLOG_INFO("ConnectionReader::read_part: 2");
     if (n == 0) {
-        RAWLOG_INFO("ConnectionReader::read_part: 3");
         return false;
     }
-    RAWLOG_INFO("ConnectionReader::read_part: 4");
     jbyte *pData = env->GetByteArrayElements(data, NULL);
-    RAWLOG_INFO("ConnectionReader::read_part: 5");
     file.write(pData, n);
-    RAWLOG_INFO("ConnectionReader::read_part: 6");
     env->ReleaseByteArrayElements(data, pData, JNI_ABORT);
-    RAWLOG_INFO("ConnectionReader::read_part: 7");
     return true;
 }
