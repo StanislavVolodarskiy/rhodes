@@ -95,54 +95,35 @@ public class NetRequest
 
         HttpURLConnection connection = null;
         try {
-            INFO("MARK 1");
             URL url = new URL(url_);
 
-            INFO("MARK 2");
             connection = (HttpURLConnection) url.openConnection();
-            INFO("MARK 3");
             try {
                 connection.setRequestMethod(method);
 
-                INFO("MARK 4");
                 if (headers != null) {
-                    INFO("headers size is " + headers.size());
                     for (Map.Entry<String, String> e : headers.entrySet()) {
-                        INFO("header '" + e.getKey() + "': '" + e.getValue() + "'");
                         connection.setRequestProperty(e.getKey(), e.getValue());
                     }
                 }
 
-                INFO("MARK 5");
                 if (session != null && !session.isEmpty()) {
                     connection.setRequestProperty("Cookie", session);
                 }
 
-                INFO("MARK 6");
                 if ("POST".equals(method) && body != null) {
-                    INFO("MARK 6.1");
                     OutputStream os = connection.getOutputStream();
-                    INFO("MARK 6.2");
                     BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"));
-                    INFO("MARK 6.3");
                     writer.write(body);
-                    INFO("MARK 6.4");
                     writer.flush();
-                    INFO("MARK 6.5");
                     writer.close();
-                    INFO("MARK 6.6");
                     os.close();
-                    INFO("MARK 6.7");
                 }
 
-                INFO("MARK 7");
                 String response_body = readResponseBody(connection);
-                INFO("response body size is " + response_body.length());
 
-                INFO("MARK 8");
                 return new NetResponse(connection.getResponseCode(), response_body, readCookies(connection));
             } finally {
-                INFO("MARK 9");
                 connection.disconnect();
             }
         } catch (IOException e) {
@@ -177,16 +158,12 @@ public class NetRequest
 
         NetConnection connection = null;
         try {
-            INFO("MARK 1");
             connection = new NetConnection(url);
 
-            INFO("MARK 2");
             connection.setRequestMethod(method);
 
             if (headers != null) {
-                INFO("headers size is " + headers.size());
                 for (Map.Entry<String, String> e : headers.entrySet()) {
-                    INFO("header '" + e.getKey() + "': '" + e.getValue() + "'");
                     connection.setRequestProperty(e.getKey(), e.getValue());
                 }
             }
@@ -195,12 +172,10 @@ public class NetRequest
                 connection.setRequestProperty("Cookie", session);
             }
 
-            INFO("MARK 3");
             if ("POST".equals(method) && body != null) {
                 connection.writeRequestBody(body);
             }
 
-            INFO("MARK 4");
             return connection;
         } catch (IOException e) {
             INFO("exception is [" + e.getMessage() + "]");
@@ -235,50 +210,36 @@ public class NetRequest
 
         HttpURLConnection connection = null;
         try {
-            INFO("MARK 1");
             URL url = new URL(url_);
 
-            INFO("MARK 2");
             connection = (HttpURLConnection) url.openConnection();
-            INFO("MARK 3");
             try {
                 connection.setRequestMethod("POST");
 
-                INFO("MARK 4");
                 if (headers != null) {
-                    INFO("headers size is " + headers.size());
                     for (Map.Entry<String, String> e : headers.entrySet()) {
-                        INFO("header '" + e.getKey() + "': '" + e.getValue() + "'");
                         connection.setRequestProperty(e.getKey(), e.getValue());
                     }
                 }
 
-                INFO("MARK 5");
                 if (session != null && !session.isEmpty()) {
                     connection.setRequestProperty("Cookie", session);
                 }
 
-                INFO("MARK 6");
                 connection.addRequestProperty("Content-length", "" + entity.getContentLength());
                 connection.addRequestProperty(
                     entity.getContentType().getName(),
                     entity.getContentType().getValue()
                 );
 
-                INFO("MARK 7");
                 OutputStream os = connection.getOutputStream();
                 entity.writeTo(os);
                 os.close();
 
-                INFO("MARK 8");
                 String response_body = readResponseBody(connection);
-                INFO("response body size is " + response_body.length());
-
-                INFO("MARK 9");
 
                 return new NetResponse(connection.getResponseCode(), response_body, readCookies(connection));
             } finally {
-                INFO("MARK 10");
                 connection.disconnect();
             }
         } catch (IOException e) {
@@ -291,7 +252,6 @@ public class NetRequest
                     INFO("response code exception is [" + ee.getMessage() + "]");
                 }
             }
-            INFO("response code is " + response_code);
             return new NetResponse(response_code, null, null);
         }
     }
@@ -315,8 +275,6 @@ public class NetRequest
                 }
             }
         }
-        String s = sb.toString();
-        INFO("cookies are [" + s + "]");
-        return s;
+        return sb.toString();
     }
 }

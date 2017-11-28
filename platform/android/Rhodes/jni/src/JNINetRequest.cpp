@@ -126,12 +126,10 @@ private:
 rho::net::JNINetRequest::JNINetRequest()
 : impl(new Impl)
 {
-    RAWLOG_INFO("UGU constructor");
 }
 
 rho::net::JNINetRequest::~JNINetRequest()
 {
-    RAWLOG_INFO("UGU destructor");
     delete impl;
 }
 
@@ -143,7 +141,7 @@ rho::net::INetResponse* rho::net::JNINetRequest::doRequest(
     rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
-    RAWLOG_INFO("UGU doRequest");
+    RAWLOG_INFO("rho::net::JNINetRequest::doRequest");
     NetworkIndicator ni;
     return convert_net_response(call_net_request_do_request(method, url, body, pSession, pHeaders));
 }
@@ -155,7 +153,7 @@ rho::net::INetResponse* rho::net::JNINetRequest::pullFile(
     rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
-    RAWLOG_INFO("UGU pullFile");
+    RAWLOG_INFO("rho::net::JNINetRequest::pullFile");
     NetworkIndicator ni = !RHODESAPP().isBaseUrl(url.c_str());
     return new rho::net::JNINetResponse("", pull_file(url, file, pSession, pHeaders), "", "");
 }
@@ -167,38 +165,38 @@ rho::net::INetResponse* rho::net::JNINetRequest::pushMultipartData(
     rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
-    RAWLOG_INFO("UGU pushMultipartData");
+    RAWLOG_INFO("rho::net::JNINetRequest::pushMultipartData");
     NetworkIndicator ni;
     return convert_net_response(call_net_request_push_multipart_data(url, items, pSession, pHeaders));
 }
 
 void rho::net::JNINetRequest::cancel()
 {
-    RAWLOG_INFO("UGU cancel");
+    RAWLOG_INFO("rho::net::JNINetRequest::cancel");
     impl->cancel();
 }
 
 rho::boolean rho::net::JNINetRequest::getSslVerifyPeer()
 {
-    RAWLOG_INFO("UGU getSslVerifyPeer");
+    RAWLOG_INFO("rho::net::JNINetRequest::getSslVerifyPeer");
     return impl->getSslVerifyPeer();
 }
 
 void rho::net::JNINetRequest::setSslVerifyPeer(boolean mode)
 {
-    RAWLOG_INFO("UGU setSslVerifyPeer");
+    RAWLOG_INFO("rho::net::JNINetRequest::setSslVerifyPeer");
     impl->setSslVerifyPeer(mode);
 }
 
 rho::net::INetResponse* rho::net::JNINetRequest::createEmptyNetResponse()
 {
-    RAWLOG_INFO("UGU createEmptyNetResponse");
+    RAWLOG_INFO("rho::net::JNINetRequest::createEmptyNetResponse");
     return impl->createEmptyNetResponse();
 }
 
 void rho::net::JNINetRequest::setCallback(INetRequestCallback* cb)
 {
-    RAWLOG_INFO("UGU setCallback");
+    RAWLOG_INFO("rho::net::JNINetRequest::setCallback");
     impl->setCallback(cb);
 }
 
