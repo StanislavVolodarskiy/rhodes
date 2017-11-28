@@ -123,7 +123,6 @@ public class NetConnection implements INetConnection
         int n = 0;
         try {
             n = getReader().read(data);
-            INFO("response body read size is " + n);
         } catch (IOException e) {
             INFO("response body exception is [" + e.getMessage() + "]");
         }
