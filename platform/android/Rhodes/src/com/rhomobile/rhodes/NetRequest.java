@@ -120,24 +120,30 @@ public class NetRequest
                     os.close();
                 }
 
-                String response_body = readResponseBody(connection);
+                String responseBody = readResponseBody(connection);
+                int responseCode = connection.getResponseCode();
+                String cookies = readCookies(connection);
 
-                return new NetResponse(connection.getResponseCode(), response_body, readCookies(connection));
+                INFO("response code is " + responseCode);
+                INFO("response body length is " + responseBody.length());
+                INFO("cookies are [" + cookies + "]");
+
+                return new NetResponse(responseCode, responseBody, cookies);
             } finally {
                 connection.disconnect();
             }
         } catch (IOException e) {
             INFO("exception is [" + e.getMessage() + "]");
-            int response_code = -1;
+            int responseCode = -1;
             if (connection != null) {
                 try {
-                    response_code = connection.getResponseCode();
+                    responseCode = connection.getResponseCode();
                 } catch (IOException ee) {
                     INFO("response code exception is [" + ee.getMessage() + "]");
                 }
             }
-            INFO("response code is " + response_code);
-            return new NetResponse(response_code, null, null);
+            INFO("response code is " + responseCode);
+            return new NetResponse(responseCode, null, null);
         }
     }
 
@@ -236,23 +242,23 @@ public class NetRequest
                 entity.writeTo(os);
                 os.close();
 
-                String response_body = readResponseBody(connection);
+                String responseBody = readResponseBody(connection);
 
-                return new NetResponse(connection.getResponseCode(), response_body, readCookies(connection));
+                return new NetResponse(connection.getResponseCode(), responseBody, readCookies(connection));
             } finally {
                 connection.disconnect();
             }
         } catch (IOException e) {
             INFO("exception is [" + e.getMessage() + "]");
-            int response_code = -1;
+            int responseCode = -1;
             if (connection != null) {
                 try {
-                    response_code = connection.getResponseCode();
+                    responseCode = connection.getResponseCode();
                 } catch (IOException ee) {
                     INFO("response code exception is [" + ee.getMessage() + "]");
                 }
             }
-            return new NetResponse(response_code, null, null);
+            return new NetResponse(responseCode, null, null);
         }
     }
 
