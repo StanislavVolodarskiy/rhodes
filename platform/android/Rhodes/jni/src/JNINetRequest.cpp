@@ -242,7 +242,12 @@ jobject call_net_request_do_request(
         headers = *pHeaders;
     }
     if (strcmp(method, "POST") == 0 && body.length() > 0 && headers.find("Content-Type") == headers.end()) {
-        headers.put("Content-Type", "text/html; charset=utf-8");
+        if (pSession != NULL) {
+            rho::String content_type = pSession->getContentType();
+            if (content_type.length() > 0) {
+                headers.put("Content-Type", content_type);
+            }
+        }
     }
 
     JNIEnv *env = jnienv();
