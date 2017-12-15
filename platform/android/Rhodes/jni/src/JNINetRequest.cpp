@@ -237,6 +237,14 @@ jobject call_net_request_do_request(
     const rho::Hashtable<rho::String, rho::String>* pHeaders
 )
 {
+    rho::Hashtable<rho::String, rho::String> headers;
+    if (pHeaders != NULL) {
+        headers = *pHeaders;
+    }
+    if (strcmp(method, "POST") == 0 && body.length() > 0 && headers.find("Content-Type") == headers.end()) {
+        headers.put("Content-Type", "text/html");
+    }
+
     JNIEnv *env = jnienv();
 
     jclass class_ = getJNIClass(RHODES_JAVA_CLASS_NETREQUEST);
@@ -256,7 +264,7 @@ jobject call_net_request_do_request(
     jhstring url_j = rho_cast<jstring>(env, url);
     jhstring body_j = rho_cast<jstring>(env, body);
     jhstring session_j = rho_cast<jstring>(env, get_session_string(pSession));
-    jhobject headers_j = (pHeaders == NULL) ? NULL : new_hashmap(*pHeaders);
+    jhobject headers_j = new_hashmap(headers);
 
     return env->CallObjectMethod(
         net_request.get(),
