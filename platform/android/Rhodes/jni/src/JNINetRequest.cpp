@@ -242,7 +242,7 @@ jobject call_net_request_do_request(
         headers = *pHeaders;
     }
     if (strcmp(method, "POST") == 0 && body.length() > 0 && headers.find("Content-Type") == headers.end()) {
-        headers.put("Content-Type", "text/html");
+        headers.put("Content-Type", "text/html; charset=utf-8");
     }
 
     JNIEnv *env = jnienv();
