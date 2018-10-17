@@ -35,6 +35,7 @@ platform/shared/*/iphone/*/build/*
 platform/shared/*/iphone/build/*
 platform/shared/*/win32/bin/*
 platform/shared/qt/*/*/Debug
+platform/shared/common/barcode_engine.h
 platform/symbian/bld.inf
 platform/symbian/curl/bld.inf
 platform/symbian/curl/curl_lib.mmp
@@ -78,6 +79,9 @@ platform/symbian/syncengine/Makefile
 platform/symbian/syncengine/Makefile_syncengine_lib.mk
 platform/symbian/syncengine/syncengine_l
 platform/symbian/syncengine/syncengine_lib.mmp
+lib/commonAPI/*/ext/platform/qt/debug
+lib/commonAPI/*/ext/platform/qt/release
+lib/commonAPI/*/ext/platform/qt/resources/*.cpp
 platform/win32/**/*.pch
 platform/win32/bin/*
 platform/wm/**/*.pch
@@ -96,6 +100,24 @@ platform/wp7/WPApplication/rho/*
 platform/wp8/*/obj/*
 platform/wp8/bin/*
 platform/wp8/ipch/*
+platform/uwp/*/obj/*
+platform/uwp/platform
+lib/commonApi/*/ext/platform/uwp/bin/*
+platform/uwp/bin/*
+platform/uwp/ipch/*
+platform/uwp/RhoRuntimeInvoker/bin/*
+platform/uwp/rhodes/Bin/*
+platform/uwp/rhodes/rho/*
+platform/uwp/rhodes/AppPackages/*
+platform/uwp/bin/arm/debug/*
+platform/uwp/bin/arm/release/*
+platform/uwp/bin/x86/debug/*
+platform/uwp/bin/x86/release/*
+platform/uwp/bin/x64/debug/*
+platform/uwp/bin/x64/release/*
+platform/uwp/bin/win32/debug/*
+platform/uwp/bin/win32/release/*
+*.VC.opendb
 rhodes/*/pkg/
 rhodes/rhodes-framework/spec/bin/
 rhoconnect-client/build/*
@@ -201,6 +223,9 @@ platform/android/bin
 platform/android/target
 platform/shared/*/bin
 platform/android/**/default.properties
+**/android/**/fireBaseValues.xml
+platform/android/proguard/*.txt
+platform/android/proguard/proguard-generated-rules.pro
 
 #*.jar
 *.cod
@@ -214,6 +239,7 @@ platform/android/**/default.properties
 *.idb
 *.sdf
 *.opensdf
+*.VC.db
 
 *.mode1v3
 *.mode2v3
@@ -247,6 +273,7 @@ Manifest.java
 platform/shared/qt/rhodes/GeneratedFiles/*
 platform/shared/qt/*/Makefile*
 platform/shared/qt/Makefile*
+platform/shared/build-RhoSimulator_dev*
 lib/commonAPI/*/ext/platform/qt/Makefile*
 lib/extensions/*/ext/Makefile*
 platform/shared/qtrhodes/generatedfiles/*
@@ -255,7 +282,8 @@ platform/shared/RhoSimulator-build*
 platform/shared/ruby/ext/rho/extensions.c
 platform/linux/bin/*
 platform/iphone/project_bakup
-
+platform/win32/RhoSimulatorRunnable
+res/build-tools/maven/m2/com/*
 spec/phone_spec/rhosimulator/*
 *.pro.user.*
 platform/shared/qt/rhodes/RhoSimulatorVersion.h
@@ -283,3 +311,8 @@ spec/phone_spec/app/Data/big_test.json
 res/build-tools/apache-maven-3.3.9/m2/**/_remote.repositories
 res/build-tools/apache-maven-3.3.9/m2/**/*.lastUpdated
 
+obj/
+generated/
+platform/shared/common/app_build_capabilities.h
+platform/shared/common/app_build_configs.c
+platform/shared/ruby/ext/rho/extensions.c
