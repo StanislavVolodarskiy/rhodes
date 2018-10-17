@@ -23,8 +23,8 @@
 * 
 * http://rhomobile.com
 *------------------------------------------------------------------------*/
-
 #include "DBAdapter.h"
+
 #include "sync/RhoconnectClientManager.h"
 
 #include "common/RhoFile.h"
@@ -33,14 +33,16 @@
 #include "common/RhodesApp.h"
 #include "common/RhoAppAdapter.h"
 #include "common/Tokenizer.h"
-#ifndef RHO_NO_RUBY 
-#include "ruby/ext/rho/rhoruby.h"
-#endif //RHO_NO_RUBY
 #include "common/app_build_configs.h"
 #include "DBImportTransaction.h"
 #include "DBRequestHelper.h"
 
+#ifndef RHO_NO_RUBY
+#include "ruby/ext/rho/rhoruby.h"
+#endif //RHO_NO_RUBY
+
 #include <sstream>
+
 
 #undef DEBUG_SQL_TRACE
 
@@ -343,6 +345,7 @@ void CDBAdapter::CDBVersion::toFile(const String& strFilePath)const//throws Exce
 	//try{
         CRhoFile::deleteFile( strFilePath.c_str() );
         CRhoFile::writeStringToFile(strFilePath.c_str(), strFullVer);
+        LOG(INFO) + "Saving DB Version: " + strFullVer;
 	//}catch (Exception e) {
    // 	LOG.ERROR("writeDBVersion failed.", e);
     //	throw e;
@@ -351,6 +354,7 @@ void CDBAdapter::CDBVersion::toFile(const String& strFilePath)const//throws Exce
 
 boolean CDBAdapter::migrateDB(const CDBVersion& dbVer, const CDBVersion& dbNewVer )
 {
+    if (usingDeprecatedPageSize()) return true;
     LOG(INFO) + "Try migrate database from " + dbVer.m_strRhoVer + " to " + dbNewVer.m_strRhoVer;
     if ( (dbVer.m_strRhoVer.find("1.4") == 0)&& (dbNewVer.m_strRhoVer.find("1.5")==0||dbNewVer.m_strRhoVer.find("1.4")==0) )
     {
@@ -418,7 +422,7 @@ void CDBAdapter::checkDBVersion(String& strRhoDBVer)
 	CDBVersion dbVer;  
 	dbVer.fromFile(m_strDbVerPath);
 
-	if (dbVer.m_strRhoVer.length() == 0 )
+	if (dbVer.m_strRhoVer.length() == 0)
 	{
 		dbNewVer.toFile(m_strDbVerPath);
 		return;
@@ -440,7 +444,13 @@ void CDBAdapter::checkDBVersion(String& strRhoDBVer)
     if ( bRhoReset && !bAppReset && !bDbFormatChanged )
         bRhoReset = !migrateDB(dbVer, dbNewVer);
 
-    if ( bRhoReset || bAppReset || bDbFormatChanged)
+        LOG(INFO) + "bRhoReset: " + bRhoReset;
+        LOG(INFO) + "bAppReset: " + bAppReset;
+        LOG(INFO) + "bDbFormatChanged: " + bDbFormatChanged;
+
+        LOG(INFO) + "Reset Database( format changed ):" + m_strDbPath;
+
+    if ( bRhoReset || bAppReset || bDbFormatChanged )
 	{
         LOG(INFO) + "Reset database because version is changed.";
 
@@ -513,7 +523,7 @@ sqlite3_stmt* CDBAdapter::createInsertStatement(IDBResult& res, const String& ta
 
 		switch(nColType){
 			case SQLITE_NULL:
-                rc = sqlite3_bind_text(stInsert, nBindCol, null, -1, SQLITE_TRANSIENT);
+                rc = sqlite3_bind_text(stInsert, nBindCol, NULL, -1, SQLITE_TRANSIENT);
                 break;
             case SQLITE_INTEGER:
             {
@@ -949,17 +959,62 @@ void CDBAdapter::executeBatch(const char* szSql, CDBError& error)
     if ( errmsg )
         sqlite3_free(errmsg);
 }
-	
+
+String CDBAdapter::tauDecryptTextFile(const String fullPath){
+    const char* key = get_app_build_config_item("encrypt_files_key");
+    if (!key){
+        return "";
+    }
+
+    FILE *fp = fopen(fullPath.c_str(), "rb");
+    fseek(fp, 0, SEEK_END);
+    int encrytedFileSize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    char* encryptedFileBuff = new char [encrytedFileSize];
+    char* decrypedFileBuff = new char [encrytedFileSize*2];
+    
+    size_t loaded = fread(encryptedFileBuff, 1, encrytedFileSize, fp);
+    if (loaded < encrytedFileSize) {
+        if (ferror(fp) ) {
+            RAWLOG_ERROR2("Can not read part of file (at position %lu): %s", (unsigned long)0, strerror(errno));
+        } else if ( feof(fp) ) {
+            RAWLOG_ERROR1("End of file reached, but we expect data (%lu bytes)", (unsigned long)encrytedFileSize);
+        }
+        fclose(fp);
+        delete[] encryptedFileBuff;
+        delete[] decrypedFileBuff;
+        return "";
+    }
+    
+    int decrytedFileSize = rho_decrypt_file((const char*)encryptedFileBuff, encrytedFileSize, 
+                                                    (char*)decrypedFileBuff, encrytedFileSize*2);
+    
+    delete[] encryptedFileBuff;
+    String result = String(const_cast< const char * > (decrypedFileBuff), decrytedFileSize);
+    delete[] decrypedFileBuff;
+
+    return std::move(result);
+}
+
 void CDBAdapter::createSchema()
 {
+    LOG(INFO)+"Creating schema";
 #ifdef RHODES_EMULATOR
-    String strPath = CFilePath::join( RHOSIMCONF().getRhodesPath(), "platform/shared/db/res/db/syncdb.schema" );
+    String strPath = CFilePath::join( RHOSIMCONF().getRhodesPath(), "platform/shared/db/res/db/syncdb.schema");
 #else
     String strPath = CFilePath::join( RHODESAPP().getRhoRootPath(), "db/syncdb.schema" );
 #endif
 
     String strSqlScript;
-    CRhoFile::loadTextFile(strPath.c_str(), strSqlScript);
+
+    if (CRhoFile::isFileExist(strPath.c_str())){
+        LOG(INFO)+"Schema not encrypted";
+        CRhoFile::loadTextFile(strPath.c_str(), strSqlScript);
+    }else{
+        LOG(INFO) + "Schema encrypted";
+        strSqlScript = tauDecryptTextFile(strPath + ".encrypted");
+    }
 
     if ( strSqlScript.length() == 0 )
     {
@@ -969,7 +1024,7 @@ void CDBAdapter::createSchema()
 
 	CDBError dbError;
 	executeBatch(strSqlScript.c_str(), dbError);
-	
+
     if ( dbError.isOK() )
         createTriggers();
 }
@@ -1046,7 +1101,7 @@ int CDBAdapter::prepareSqlStatement(const char* szSql, int nByte, sqlite3_stmt *
 {
     int rc = SQLITE_OK;
     sqlite3_stmt* st = m_mapStatements.get(szSql);
-    if ( st != null )
+    if ( st != NULL )
         *ppStmt	 = st;
     else
     {
@@ -1060,12 +1115,12 @@ int CDBAdapter::prepareSqlStatement(const char* szSql, int nByte, sqlite3_stmt *
 
 DBResultPtr CDBAdapter::prepareStatement( const char* szSt )
 {
-    if ( m_dbHandle == null )
+    if ( m_dbHandle == NULL )
         return new CDBResult();
 
 	DBResultPtr res = new CDBResult(0,this);
     sqlite3_stmt* st = m_mapStatements.get(szSt);
-    if ( st != null )
+    if ( st != NULL )
 	{
 		res->setStatement(st);
         return res;
@@ -1087,7 +1142,7 @@ DBResultPtr CDBAdapter::prepareStatement( const char* szSt )
 DBResultPtr CDBAdapter::executeSQLReportNonUniqueEx( const char* szSt, Vector<String>& arValues )
 {
     DBResultPtr res = prepareStatement(szSt);
-    if ( res->getStatement() == null )
+    if ( res->getStatement() == NULL )
         return res;
 
     for (int i = 0; i < (int)arValues.size(); i++ )
@@ -1100,7 +1155,7 @@ DBResultPtr CDBAdapter::executeSQLReportNonUniqueEx( const char* szSt, Vector<St
 DBResultPtr CDBAdapter::executeSQLEx( const char* szSt, Vector<String>& arValues)
 {
     DBResultPtr res = prepareStatement(szSt);
-    if ( res->getStatement() == null )
+    if ( res->getStatement() == NULL )
         return res;
 
     for (int i = 0; i < (int)arValues.size(); i++ )
@@ -1112,7 +1167,7 @@ DBResultPtr CDBAdapter::executeSQLEx( const char* szSt, Vector<String>& arValues
 DBResultPtr CDBAdapter::executeSQL( const char* szSt)
 {
     DBResultPtr res = prepareStatement(szSt);
-    if ( res->getStatement() == null )
+    if ( res->getStatement() == NULL )
         return res;
 
     return executeStatement(res, szSt);
@@ -1125,7 +1180,7 @@ DBResultPtr CDBAdapter::executeStatement(DBResultPtr& res, const char* szSt)
     int rc = sqlite3_step(res->getStatement());
     if ( rc != SQLITE_ROW )
     {
-        res->setStatement(null);
+        res->setStatement(NULL);
         if ( rc != SQLITE_OK && rc != SQLITE_ROW && rc != SQLITE_DONE )
         {
             checkDbErrorEx(rc, *res);
@@ -1237,10 +1292,12 @@ String CDBAdapter::exportDatabase() {
 	close(false);
 
 	String ret = zipName;
-	
-	if (rho_sys_zip_files_with_path_array_ptr(zipName.c_str(),basePath.c_str(),fileList,0)!=0) {
-		ret = "";
-	}
+
+#ifndef OS_LINUX
+    if (rho_sys_zip_files_with_path_array_ptr(zipName.c_str(),basePath.c_str(),fileList,0)!=0) {
+        ret = "";
+    }
+#endif
 
 	open(path,ver,false,false);
 	
@@ -1494,111 +1551,4 @@ void rho_db_decrypt( const char* szPartition, int nPartLen, int size, unsigned c
         db.getCrypt()->db_decrypt(strPartition.c_str(), size, data);
 }
 
-}
-
-namespace rho{
-namespace common{
-
-#ifndef RHO_NO_RUBY
-CRubyMutex::CRubyMutex(boolean bIgnore) : m_nLockCount(0), m_valThread(0), m_valMutex(null)
-{
-    m_bIgnore = bIgnore || RHOCONF().getBool("no_ruby_threads");
-}
-
-void CRubyMutex::create()
-{
-    if ( !m_bIgnore && !m_valMutex)
-    {
-        unsigned long curThread = rho_ruby_current_thread();
-        if ( curThread != null )
-            m_valMutex = rho_ruby_create_mutex();
-    }
-}
-
-CRubyMutex::~CRubyMutex()
-{
-    close();    
-}
-
-void CRubyMutex::close()
-{
-    if ( m_valMutex )
-    {
-        rho_ruby_destroy_mutex(m_valMutex);
-        m_valMutex = 0;
-    }
-}
-
-boolean CRubyMutex::isMainRubyThread()
-{
-    return rho_ruby_main_thread() == rho_ruby_current_thread();
-}
-
-void CRubyMutex::Lock()
-{
-    if ( m_valMutex == null )
-        return;
-
-    unsigned long curThread = rho_ruby_current_thread();
-    if ( curThread == null )
-        return;
-
-    if ( m_valThread != curThread )
-    {
-        rho_ruby_lock_mutex(m_valMutex);
-        m_valThread = curThread;
-        m_nLockCount = 1;
-    }else
-        m_nLockCount += 1;
-}
-
-void CRubyMutex::Unlock()
-{
-    if ( m_valMutex == null || m_nLockCount == 0)
-        return;
-
-    m_nLockCount--;
-    if ( m_nLockCount == 0 )
-    {
-        m_valThread = null;
-        rho_ruby_unlock_mutex(m_valMutex);
-    }
-}
-#else //RHO_NO_RUBY
-CRubyMutex::CRubyMutex(boolean bIgnore) : m_nLockCount(0), m_valThread(0), m_valMutex(null)
-{
-}
-
-CRubyMutex::~CRubyMutex()
-{
-}
-
-boolean CRubyMutex::isMainRubyThread()
-{
-	if ( (!sync::RhoconnectClientManager::haveRhoconnectClientImpl()) || (!sync::RhoconnectClientManager::haveSyncThread()))
-//    if ( !sync::CSyncThread::getInstance() )
-        return true;
-
-    //return sync::CSyncThread::getInstance()->getThreadID() != CSystem::getThreadID();
-	return sync::RhoconnectClientManager::syncThreadGetThreadID() != CSystem::getThreadID();
-}
-
-void CRubyMutex::Lock()
-{
-}
-
-void CRubyMutex::Unlock()
-{
-}
-
-void CRubyMutex::close()
-{
-}
-
-void CRubyMutex::create()
-    {
-        
-    }
-#endif //RHO_NO_RUBY
-}
 }

@@ -15,11 +15,12 @@ macx {
   OBJECTS_DIR = ../../../../platform/osx/bin/extensions/openssl
   INCLUDEPATH += ../../../../platform/shared/ruby/iphone macosx
   HEADERS += macosx/extconf.h
+  INCLUDEPATH += ../../../../../openssl/include
 }
 win32 {
   DESTDIR = ../../../../platform/win32/bin/extensions
   OBJECTS_DIR = ../../../../platform/win32/bin/extensions/openssl
-  DEFINES += WIN32 _WINDOWS _LIB _UNICODE UNICODE
+  DEFINES += WIN32 _WINDOWS _LIB _UNICODE UNICODE WIN32_LEAN_AND_MEAN
   Debug {
     DEFINES += _DEBUG DEBUG
   }

@@ -30,26 +30,11 @@
 #include "DBAttrManager.h"
 #include "logging/RhoLog.h"
 #include "common/IRhoCrypt.h"
+#include "DBLock.h"
+
+extern "C" void rhoInitSQLitePageSize(unsigned int);
 
 namespace rho{
-namespace common{
-class CRubyMutex
-{
-    int m_nLockCount;
-    unsigned long m_valThread, m_valMutex;
-    boolean m_bIgnore;
-public:
-    CRubyMutex(boolean bIgnore);
-    ~CRubyMutex();
-
-    void create();
-    boolean isMainRubyThread();
-    void Lock();
-    void Unlock();
-
-    void close();
-};
-}
 
 namespace db{
 	
@@ -61,7 +46,7 @@ class CDBAdapter
     String   m_strDbPartition;
 
     Hashtable<String,sqlite3_stmt*> m_mapStatements;
-    common::CRubyMutex m_mxRuby;
+    CRubyMutex m_mxRuby;
     common::CMutex m_mxDB;
     boolean m_bUIWaitDB;
     unsigned m_nTransactionCounter;
@@ -107,8 +92,18 @@ public:
     DEFINE_LOGCLASS;
 
     CDBAdapter(const char* szDBPartition, boolean bNoRubyLock) : m_dbHandle(0), m_strDbPath(""), m_strDbPartition(szDBPartition),
-        m_mxRuby(bNoRubyLock), m_bUIWaitDB(false), m_nTransactionCounter(0) {}
+        m_mxRuby(bNoRubyLock), m_bUIWaitDB(false), m_nTransactionCounter(0) {
+            rhoInitSQLitePageSize(4096);
+            if (usingDeprecatedPageSize()){
+                rhoInitSQLitePageSize(1024);
+            }
+            
+        }
     ~CDBAdapter(void){}
+    bool usingDeprecatedPageSize(){
+        const char* depEncrypt = get_app_build_config_item("use_deprecated_encryption");
+        return (depEncrypt && strcmp(depEncrypt, "1") == 0);
+    }
 
     void open (String strDbPath, String strVer, boolean bTemp, boolean checkImportState);
     void close(boolean bCloseRubyMutex = true);
@@ -167,7 +162,7 @@ public:
     DBResultPtr executeSQL( const char* szSt, T1 p1, T2 p2 )
     {
         DBResultPtr res = prepareStatement(szSt);
-        if ( res->getStatement() == null )
+        if ( res->getStatement() == NULL )
             return res;
 
         bind(res->getStatement(), 1, p1);
@@ -180,7 +175,7 @@ public:
     DBResultPtr executeSQL( const char* szSt, T1 p1, T2 p2, T3 p3 )
     {
         DBResultPtr res = prepareStatement(szSt);
-        if ( res->getStatement() == null )
+        if ( res->getStatement() == NULL )
             return res;
 
         bind(res->getStatement(), 1, p1);
@@ -194,7 +189,7 @@ public:
     DBResultPtr executeSQL( const char* szSt, T1 p1, T2 p2, T3 p3, T4 p4 )
     {
         DBResultPtr res = prepareStatement(szSt);
-        if ( res->getStatement() == null )
+        if ( res->getStatement() == NULL )
             return res;
 
         bind(res->getStatement(), 1, p1);
@@ -209,7 +204,7 @@ public:
     DBResultPtr executeSQL( const char* szSt, T1 p1, T2 p2, T3 p3, T4 p4, T5 p5 )
     {
         DBResultPtr res = prepareStatement(szSt);
-        if ( res->getStatement() == null )
+        if ( res->getStatement() == NULL )
             return res;
 
         bind(res->getStatement(), 1, p1);
@@ -225,7 +220,7 @@ public:
     DBResultPtr executeSQL( const char* szSt, T1 p1, T2 p2, T3 p3, T4 p4, T5 p5, T6 p6 )
     {
         DBResultPtr res = prepareStatement(szSt);
-        if ( res->getStatement() == null )
+        if ( res->getStatement() == NULL )
             return res;
 
         bind(res->getStatement(), 1, p1);
@@ -244,7 +239,7 @@ public:
     DBResultPtr executeSQLReportNonUnique( const char* szSt, T1 p1, T2 p2, T3 p3, T4 p4 )
     {
         DBResultPtr res = prepareStatement(szSt);
-        if ( res->getStatement() == null )
+        if ( res->getStatement() == NULL )
             return res;
 
         bind(res->getStatement(), 1, p1);
@@ -260,7 +255,7 @@ public:
     DBResultPtr executeSQLReportNonUnique( const char* szSt, T1 p1, T2 p2, T3 p3, T4 p4, T5 p5, T6 p6, T7 p7 )
     {
         DBResultPtr res = prepareStatement(szSt);
-        if ( res->getStatement() == null )
+        if ( res->getStatement() == NULL )
             return res;
 
         bind(res->getStatement(), 1, p1);
@@ -279,7 +274,7 @@ public:
     DBResultPtr executeSQL( const char* szSt, T1 p1, T2 p2, T3 p3, T4 p4, T5 p5, T6 p6, T7 p7 )
     {
         DBResultPtr res = prepareStatement(szSt);
-        if ( res->getStatement() == null )
+        if ( res->getStatement() == NULL )
             return res;
 
         bind(res->getStatement(), 1, p1);
@@ -297,7 +292,7 @@ public:
     DBResultPtr executeSQL( const char* szSt, T1 p1, T2 p2, T3 p3, T4 p4, T5 p5, T6 p6, T7 p7, T8 p8 )
     {
         DBResultPtr res = prepareStatement(szSt);
-        if ( res->getStatement() == null )
+        if ( res->getStatement() == NULL )
             return res;
 
         bind(res->getStatement(), 1, p1);
@@ -316,7 +311,7 @@ public:
     DBResultPtr executeSQL( const char* szSt, T1 p1, T2 p2, T3 p3, T4 p4, T5 p5, T6 p6, T7 p7, T8 p8, T9 p9 )
     {
         DBResultPtr res = prepareStatement(szSt);
-        if ( res->getStatement() == null )
+        if ( res->getStatement() == NULL )
             return res;
 
         bind(res->getStatement(), 1, p1);
@@ -336,7 +331,7 @@ public:
     DBResultPtr executeSQL( const char* szSt, T1 p1)
     {
         DBResultPtr res = prepareStatement(szSt);
-        if ( res->getStatement() == null )
+        if ( res->getStatement() == NULL )
             return res;
 
         bind(res->getStatement(), 1, p1);
@@ -374,6 +369,7 @@ private:
 
     void checkDBVersion(String& strVer);
     void createSchema();
+    String tauDecryptTextFile(const String fullPath);
     void createTriggers();
     boolean checkDbError(int rc);
     boolean checkDbErrorEx(int rc, rho::db::CDBResult& res);
@@ -382,13 +378,6 @@ private:
     boolean migrateDB(const CDBVersion& dbVer, const CDBVersion& dbNewVer);
     void copyTable(String tableName, CDBAdapter& dbFrom, CDBAdapter& dbTo);
     void copyChangedValues(CDBAdapter& db);
-};
-	
-class DBLock {
-	CDBAdapter& _db;
-public:
-	DBLock(CDBAdapter& db) : _db(db) { _db.Lock(); }
-	~DBLock() { _db.Unlock(); }
 };
 
 }

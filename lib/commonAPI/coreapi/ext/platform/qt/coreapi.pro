@@ -1,5 +1,19 @@
-QT -= core
+greaterThan(QT_MINOR_VERSION, 6): {
+    CONFIG += c++14
+    DEFINES += RHODES_VERSION_2
+}
 
+equals(QT_MAJOR_VERSION, 5) {
+    equals(QT_MINOR_VERSION, 6) {
+        QT += core
+        DEFINES += OS_SAILFISH OS_LINUX
+        CONFIG += c++14
+    }
+}
+
+lessThan(QT_MINOR_VERSION, 6): {
+    DEFINES += RHODES_VERSION_1
+}
 TARGET = coreapi
 TEMPLATE = lib
 
@@ -19,10 +33,23 @@ macx {
   INCLUDEPATH += ../../../../../../platform/shared/ruby/iphone
   SOURCES += src/CNetworkDetect.cpp
 }
+
+unix:!macx {
+  DESTDIR = $$PWD/../../../../../../platform/linux/bin/extensions
+  OBJECTS_DIR = $$PWD/../../../../../../platform/linux/bin/extensions/coreapi
+  INCLUDEPATH += $$PWD/../../../../../../platform/shared/ruby/sailfish
+  SOURCES += src/CNetworkDetect.cpp
+  QMAKE_CFLAGS += -fvisibility=hidden
+  QMAKE_CXXFLAGS += -fvisibility=hidden
+}
+
 win32 {
+  greaterThan(QT_MINOR_VERSION, 6): {
+      DEFINES += CPP_ELEVEN
+  }
   DESTDIR = ../../../../../../platform/win32/bin/extensions
   OBJECTS_DIR = ../../../../../../platform/win32/bin/extensions/coreapi
-  DEFINES += WIN32 _WINDOWS _LIB _UNICODE UNICODE
+  DEFINES += WIN32 _WINDOWS _LIB _UNICODE UNICODE WIN32_LEAN_AND_MEAN
   Debug {
     DEFINES += _DEBUG DEBUG
   }
@@ -50,12 +77,18 @@ DEFINES += RHODES_QT_PLATFORM
   QMAKE_CXXFLAGS_WARN_ON += -Wno-extra -Wno-unused -Wno-sign-compare -Wno-format -Wno-parentheses
   # QMAKE_CFLAGS += -fvisibility=hidden
   # QMAKE_CXXFLAGS += -fvisibility=hidden
+  QMAKE_CFLAGS_DEBUG -= -O2
+  QMAKE_CXXFLAGS_DEBUG -= -O2
 }
 win32 {
   QMAKE_CFLAGS_WARN_ON += /wd4996 /wd4100 /wd4005
   QMAKE_CXXFLAGS_WARN_ON += /wd4996 /wd4100 /wd4005
-  QMAKE_CFLAGS_RELEASE += /O2
-  QMAKE_CXXFLAGS_RELEASE += /O2
+    QMAKE_CXXFLAGS_RELEASE += /MP9 /O2
+    QMAKE_CXXFLAGS_DEBUG += /MP9 /O2
+
+    QMAKE_CFLAGS_RELEASE += /O2 /MD
+    QMAKE_CFLAGS_RELEASE_WITH_DEBUGINFO += /O2
+    QMAKE_CFLAGS_DEBUG += /Zi /MDd
 }
 
 HEADERS += \
@@ -70,6 +103,7 @@ HEADERS += \
 ../../shared/generated/cpp/ApplicationBase.h\
 ../../shared/generated/cpp/DatabaseBase.h\
 ../../shared/generated/cpp/IApplication.h\
+../../shared/generated/cpp/IConfig.h\
 ../../shared/generated/cpp/IDatabase.h\
 ../../shared/generated/cpp/ILog.h\
 ../../shared/generated/cpp/INativeMenubar.h\
@@ -101,12 +135,14 @@ HEADERS += \
 ../../shared/generated/cpp/SQLite3Base.h\
 ../../shared/generated/cpp/SystemBase.h\
 ../../shared/generated/cpp/WebViewBase.h\
-..\..\shared\generated\cpp\ITimer.h\
-..\..\shared\generated\cpp\TimerBase.h
+../../shared/generated/cpp/ITimer.h\
+../../shared/generated/cpp/TimerBase.h\
+../../shared/generated/cpp/ConfigBase.h
 
 SOURCES += \
 ../../shared/SQLite3ImplRuby.c\
 ../../shared/ApplicationImpl.cpp\
+../../shared/ConfigImpl.cpp\
 ../../shared/FileImpl.cpp\
 ../../shared/InitExtension.cpp\
 ../../shared/LogImpl.cpp\
@@ -126,6 +162,9 @@ SOURCES += \
 ../../shared/generated/database_api_init.cpp\
 ../../shared/generated/database_js_api.cpp\
 ../../shared/generated/database_ruby_api.c\
+../../shared/generated/config_api_init.cpp\
+../../shared/generated/config_js_api.cpp\
+../../shared/generated/config_ruby_api.c\
 ../../shared/generated/log_api_init.cpp\
 ../../shared/generated/log_js_api.cpp\
 ../../shared/generated/log_ruby_api.c\
@@ -171,12 +210,15 @@ SOURCES += \
 ../../shared/generated/webview_api_init.cpp\
 ../../shared/generated/webview_js_api.cpp\
 ../../shared/generated/webview_ruby_api.c\
-..\..\shared\generated\timer_api_init.cpp\
-..\..\shared\generated\timer_js_api.cpp\
-..\..\shared\generated\timer_ruby_api.c\
+../../shared/generated/timer_api_init.cpp\
+../../shared/generated/timer_js_api.cpp\
+../../shared/generated/timer_ruby_api.c\
 ../../shared/generated/cpp/ApplicationBase.cpp\
 ../../shared/generated/cpp/Application_js_wrap.cpp\
 ../../shared/generated/cpp/Application_ruby_wrap.cpp\
+../../shared/generated/cpp/ConfigBase.cpp\
+../../shared/generated/cpp/Config_js_wrap.cpp\
+../../shared/generated/cpp/Config_ruby_wrap.cpp\
 ../../shared/generated/cpp/DatabaseBase.cpp\
 ../../shared/generated/cpp/Database_js_wrap.cpp\
 ../../shared/generated/cpp/Database_ruby_wrap.cpp\
@@ -225,9 +267,9 @@ SOURCES += \
 ../../shared/generated/cpp/WebViewBase.cpp\
 ../../shared/generated/cpp/WebView_js_wrap.cpp\
 ../../shared/generated/cpp/WebView_ruby_wrap.cpp\
-..\..\shared\generated\cpp\Timer_js_wrap.cpp\
-..\..\shared\generated\cpp\Timer_ruby_wrap.cpp\
-..\..\shared\generated\cpp\TimerBase.cpp\
+../../shared/generated/cpp/Timer_js_wrap.cpp\
+../../shared/generated/cpp/Timer_ruby_wrap.cpp\
+../../shared/generated/cpp/TimerBase.cpp\
 ../../shared/qt/NavbarImpl.cpp\
 src/CNativeTabbarImpl.cpp\
 src/CNativeToolbarImpl.cpp\

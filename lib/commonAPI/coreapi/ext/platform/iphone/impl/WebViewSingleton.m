@@ -11,11 +11,17 @@ extern int rho_webview_active_tab();
 extern void rho_webview_full_screen_mode(int enable);
 extern BOOL rho_webview_get_full_screen_mode();
 extern void rho_webview_set_cookie(const char* url, const char* cookie);
+extern void rho_webview_get_cookies( NSString* url, NSDictionary** retVal );
+extern BOOL rho_webview_remove_cookie( NSString* url, NSString* name );
+extern BOOL rho_webview_remove_all_cookies();
 extern void rho_webview_navigate_back();
 extern void rho_webview_navigate_back_with_tab(int tabIndex);
 extern void rho_webview_save(const char* format, const char* path, int tab_index);
 extern NSString* rho_webview_get_current_url(int tab_index);
-
+extern BOOL rho_webview_get_KeyboardDisplayRequiresUserAction();
+extern void rho_webview_set_KeyboardDisplayRequiresUserAction(BOOL value);
+extern BOOL rho_webview_get_EnableDragAndDrop();
+extern void rho_webview_set_EnableDragAndDrop(BOOL value);
 
 
 @implementation WebViewSingleton
@@ -68,6 +74,15 @@ extern NSString* rho_webview_get_current_url(int tab_index);
 -(void) setEnableWebPlugins:(BOOL)value methodResult:(id<IMethodResult>)methodResult{
     //unsupported on iOS
 }
+
+-(void) getKeyboardDisplayRequiresUserAction:(id<IMethodResult>)methodResult {
+    [methodResult setResult:[NSNumber numberWithBool:rho_webview_get_KeyboardDisplayRequiresUserAction()]];
+}
+
+-(void) setKeyboardDisplayRequiresUserAction:(BOOL)keyboardDisplayRequiresUserAction methodResult:(id<IMethodResult>)methodResult {
+    rho_webview_set_KeyboardDisplayRequiresUserAction(keyboardDisplayRequiresUserAction);
+}
+
 
 -(void) getNavigationTimeout:(id<IMethodResult>)methodResult {
     //unsupported on iOS
@@ -197,12 +212,49 @@ extern NSString* rho_webview_get_current_url(int tab_index);
     rho_webview_set_cookie([url UTF8String], [cookie UTF8String]);
 }
 
+-(void) getCookies:(NSString*)url methodResult:(id<IMethodResult>)methodResult {
+    dispatch_async(dispatch_get_main_queue(), ^(void){
+        NSDictionary* cookies = nil;
+        rho_webview_get_cookies(url, &cookies);
+        [methodResult setResult:cookies];
+    });
+}
+
+-(void) removeAllCookies:(id<IMethodResult>)methodResult {
+  dispatch_async(dispatch_get_main_queue(), ^(void){
+    BOOL b = rho_webview_remove_all_cookies();
+    NSNumber* bObj = [NSNumber numberWithBool:b];
+    [methodResult setResult:bObj];
+  });
+}
+
+-(void) removeCookie:(NSString*)url name:(NSString*)name methodResult:(id<IMethodResult>)methodResult {
+    dispatch_async(dispatch_get_main_queue(), ^(void){
+        BOOL removed = rho_webview_remove_cookie(url,name);
+        NSMutableDictionary* dict = [NSMutableDictionary dictionaryWithCapacity:1];
+        if ( removed ) {
+            [dict setObject:name forKey:@"removed_cookie"];
+        }
+        [methodResult setResult:dict];
+    });
+}
+
 -(void) save:(NSString*)format path:(NSString*)path tabIndex:(int)tabIndex methodResult:(id<IMethodResult>)methodResult{
     rho_webview_save([format UTF8String], [path UTF8String], tabIndex);
 }
 
 -(void) set_menu_items:(NSDictionary*)menuItems methodResult:(id<IMethodResult>)methodResult{
     //unsupported on iOS
+}
+
+/* getter for "enableDragAndDrop" property */
+-(void) getEnableDragAndDrop:(id<IMethodResult>)methodResult {
+    [methodResult setResult:[NSNumber numberWithBool:rho_webview_get_EnableDragAndDrop()]];
+}
+
+/* setter for "enableDragAndDrop" property */
+-(void) setEnableDragAndDrop:(BOOL)enableDragAndDrop methodResult:(id<IMethodResult>)methodResult {
+    rho_webview_set_EnableDragAndDrop(enableDragAndDrop);
 }
 
 

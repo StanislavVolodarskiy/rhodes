@@ -40,6 +40,10 @@ typedef CRITICAL_SECTION MutexType;
 typedef pthread_mutex_t MutexType;
 #endif 
 
+#if defined(OS_WINDOWS_DESKTOP) || defined(RHODES_EMULATOR)
+#define mutexSmartPointer std::shared_ptr<common::CMutex>
+#endif
+
 class CMutex{
 public:
     inline CMutex();
@@ -55,7 +59,7 @@ private:
 };
 
 #if defined(WINDOWS_PLATFORM)
-#if defined(OS_WP8)
+#if defined(OS_WP8) || defined(OS_UWP)
 CMutex::CMutex()             { InitializeCriticalSectionEx(&m_nativeMutex, 0, 0); }
 #else
 CMutex::CMutex()             { InitializeCriticalSection(&m_nativeMutex); }

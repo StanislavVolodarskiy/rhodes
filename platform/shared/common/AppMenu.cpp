@@ -37,6 +37,9 @@
 #ifdef OS_WP8
 extern "C" void createMenu();
 #endif
+#ifdef OS_UWP
+extern "C" void createMenu();
+#endif
 #ifdef RHODES_QT_PLATFORM
 extern "C" void rho_symimpl_createMenu();
 #endif
@@ -252,8 +255,8 @@ void CAppMenu::setAppMenuJSONItemsEx( const rho::Vector<rho::String>& arMenu, bo
             setEnableMenuItem(label, !isDisable, bLeftMenu);
 
         }
-#ifdef OS_WP8
-		createMenu();
+#if defined(OS_WP8) || defined (OS_UWP)
+        createMenu();
 #endif
 #ifdef RHODES_QT_PLATFORM
         rho_symimpl_createMenu();

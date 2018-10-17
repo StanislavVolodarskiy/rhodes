@@ -19,9 +19,14 @@ import com.rhomobile.rhodes.mainview.MainView;
 import com.rhomobile.rhodes.webview.WebViewConfig;
 
 import com.rhomobile.rhodes.util.ContextFactory;
+import com.rhomobile.rhodes.util.PerformOnUiThread;
 
 import android.net.Proxy;
 import android.net.Uri;
+import android.webkit.ValueCallback;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class WebViewSingleton implements IWebViewSingleton, IRhoExtension {
 
@@ -32,6 +37,7 @@ public class WebViewSingleton implements IWebViewSingleton, IRhoExtension {
     private static final String ENABLE_WEB_PLUGINS = "enable_web_plugins";
     private static final String ENABLE_CACHE = "WebView.enableCache";
     private static final String DISABLE_SCANNER_NAVIGATION = "disable_scanner_during_navigation";    
+    private static final String ENABLE_MEDIA_PLAYBACK_WITHOUT_GESTURE = "enable_media_playback_without_gesture";
     private WebViewConfig mConfig = new WebViewConfig();
 
     //private boolean bypassProxy;
@@ -70,6 +76,25 @@ public class WebViewSingleton implements IWebViewSingleton, IRhoExtension {
     }
 
     @Override
+    public void getKeyboardDisplayRequiresUserAction(IMethodResult result) {
+        result.set(true);
+    }
+
+    @Override
+    public void setKeyboardDisplayRequiresUserAction(boolean value, IMethodResult result) {
+    }
+
+
+    @Override
+    public void getEnableDragAndDrop(IMethodResult result) {
+        result.set(true);
+    }
+
+    @Override
+    public void setEnableDragAndDrop(boolean value, IMethodResult result) {
+    }
+
+    @Override
     public void getEnableZoom(IMethodResult result) {
         result.set(mConfig.getBool(WebViewConfig.ENABLE_ZOOM));
     }
@@ -79,6 +104,11 @@ public class WebViewSingleton implements IWebViewSingleton, IRhoExtension {
 //        RhoConf.setBoolean(ENABLE_ZOOM, value);
 //        mEnableZoom = value;
 //    }
+//
+    @Override
+    public void getEnableMediaPlaybackWithoutGesture(IMethodResult result) {
+        result.set(mConfig.getBool(WebViewConfig.ENABLE_MEDIA_PLAYBACK_WITHOUT_GESTURE));
+    }
 
     @Override
     public void getEnablePageLoadingIndication(IMethodResult result) {
@@ -260,6 +290,65 @@ public class WebViewSingleton implements IWebViewSingleton, IRhoExtension {
     @Override
     public void setCookie(String url, String cookie, IMethodResult result) {
         WebView.setCookie(url, cookie);
+    }
+
+    @Override
+    public void getCookies(final String url, final IMethodResult result) {
+      try {
+          PerformOnUiThread.exec(new Runnable() {
+              @Override
+              public void run() {
+                  result.set( WebView.getCookies(url) );
+              }
+          });
+      }
+      catch (Exception e) {
+          Logger.E(TAG, e);
+          result.setError( e.toString() );
+      }
+    }
+
+    @Override
+    public void removeCookie(final String url, final String cookie, final IMethodResult result) {
+
+      try {
+          PerformOnUiThread.exec(new Runnable() {
+              @Override
+              public void run() {
+                  boolean removed = WebView.removeCookie(url, cookie);
+                  Map<String,Object> res = new HashMap();
+                  if ( removed ) {
+                      res.put( "removed_cookie", cookie );
+                  }
+                  result.set(res);
+              }
+          });
+      }
+      catch (Exception e) {
+          Logger.E(TAG, e);
+          result.setError(e.toString());
+      }
+    }
+
+    @Override
+    public void removeAllCookies( final IMethodResult result ) {
+        try {
+            PerformOnUiThread.exec(new Runnable() {
+                @Override
+                public void run() {
+                    WebView.removeAllCookies( new ValueCallback<Boolean>() {
+                        @Override
+                        public void onReceiveValue( Boolean v ) {
+                            result.set( v.booleanValue() );
+                        }
+
+                    });
+                }
+            });
+        } catch (Exception e) {
+            Logger.E(TAG,e);
+            result.setError(e.toString());
+        }
     }
 
     @Override
@@ -586,33 +675,38 @@ public class WebViewSingleton implements IWebViewSingleton, IRhoExtension {
 					}
 				}
 			}
-			
-	if(config.isExist("disablescannerduringnavigation")){
-	        String disablescanner = config.getString("disablescannerduringnavigation");
-	        if(disablescanner != null){
-				if(disablescanner.length() > 0){
-						mConfig.set(WebViewConfig.DISABLE_SCANNER_ON_NAVIGATION,disablescanner);
-					}
-			}
-	}
-	if(config.isExist("iswindowskey")){
-	        String iswinkey = config.getString("iswindowskey");
-	        if(iswinkey != null){
-				if(iswinkey.length() > 0){
-						mConfig.set("iswindowskey",iswinkey);
-					}
-			}
-	}
-	
-	if(config.isExist("usedwforscanning")){
-	        String _usedwforscanning = config.getString("usedwforscanning");
-	        if(_usedwforscanning != null){
-				if(_usedwforscanning.length() > 0){
-						mConfig.set("usedwforscanning",_usedwforscanning);
-					}
-			}
-	}
-        
+
+    	if(config.isExist("disablescannerduringnavigation")){
+    	        String disablescanner = config.getString("disablescannerduringnavigation");
+    	        if(disablescanner != null){
+    				if(disablescanner.length() > 0){
+    						mConfig.set(WebViewConfig.DISABLE_SCANNER_ON_NAVIGATION,disablescanner);
+    					}
+    			}
+    	}
+    	if(config.isExist("iswindowskey")){
+    	        String iswinkey = config.getString("iswindowskey");
+    	        if(iswinkey != null){
+    				if(iswinkey.length() > 0){
+    						mConfig.set("iswindowskey",iswinkey);
+    					}
+    			}
+    	}
+    	
+    	if(config.isExist("usedwforscanning")){
+    	        String _usedwforscanning = config.getString("usedwforscanning");
+    	        if(_usedwforscanning != null){
+    				if(_usedwforscanning.length() > 0){
+    						mConfig.set("usedwforscanning",_usedwforscanning);
+    					}
+    			}
+        }
+
+        if (config.isExist(ENABLE_MEDIA_PLAYBACK_WITHOUT_GESTURE)) {
+            mConfig.set(WebViewConfig.ENABLE_MEDIA_PLAYBACK_WITHOUT_GESTURE, config.getBool(ENABLE_MEDIA_PLAYBACK_WITHOUT_GESTURE));
+        } else {
+            mConfig.set(WebViewConfig.ENABLE_MEDIA_PLAYBACK_WITHOUT_GESTURE, false);
+        }
     }
     
     private void readRhoConfig(IRhoConfig config) {
@@ -646,6 +740,9 @@ public class WebViewSingleton implements IWebViewSingleton, IRhoExtension {
                 bypassPolicy = bypassPolicyAppActive;
             }
         }
+
+        if (RhoConf.isExist(ENABLE_MEDIA_PLAYBACK_WITHOUT_GESTURE))
+            mConfig.set(WebViewConfig.ENABLE_MEDIA_PLAYBACK_WITHOUT_GESTURE, RhoConf.getBool(ENABLE_MEDIA_PLAYBACK_WITHOUT_GESTURE));
 
         Logger.I( TAG, "Proxy bypass policy: " + String.valueOf( bypassPolicy ) );
 

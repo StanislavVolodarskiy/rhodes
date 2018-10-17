@@ -47,8 +47,19 @@
 #import "IPushNotificationsReceiver.h"
 #import "IAppMessageReceiver.h"
 
+#if defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_10_0
+#import <UserNotifications/UserNotifications.h>;
+#endif
+
+// Copied from Apple's header in case it is missing in some cases (e.g. pre-Xcode 8 builds).
+#ifndef NSFoundationVersionNumber_iOS_9_x_Max
+#define NSFoundationVersionNumber_iOS_9_x_Max 1299
+#endif
+
+NSString *const kGCMMessageIDKey = @"gcm.message_id";
+
 @interface Rhodes : NSObject <UIApplicationDelegate,
-    UITabBarControllerDelegate, AVAudioPlayerDelegate, UIAlertViewDelegate>
+    UITabBarControllerDelegate, AVAudioPlayerDelegate, UIAlertViewDelegate, UNUserNotificationCenterDelegate>
 {
     AppManager *appManager;
     UIApplication *application;
@@ -57,6 +68,7 @@
     NSMutableDictionary *cookies;
     // Controllers
     SplashViewController *splashViewController;
+    SplashViewController *splashViewControllerSnapShot;
     LogOptionsController* logOptionsController;
     LogViewController* logViewController;
     DateTimePickerDelegate* dateTimePickerDelegate;
@@ -76,6 +88,11 @@
     BOOL mBlockExit;
     BOOL mIsFullScreen;
     BOOL mScreenStateChanged;
+    
+    // push specific
+    NSDictionary* mPushStoredData_UserInfo;
+    NSError* mPushStoredData_RegisterError;
+    NSData* mPushStoredData_DeviceToken;
 }
 
 @property (nonatomic, retain) UIWindow *window;
@@ -118,6 +135,10 @@
 
 - (void)setCookie:(NSString*)cookie forUrl:(NSString*)url;
 - (NSString*)cookie:(NSString*)url;
+
+- (NSDictionary*)getCookies:(NSString*)url;
+- (BOOL)removeCookie:(NSString*)url name:(NSString*)cookieName;
+- (BOOL)removeAllCookies;
 
 - (id<RhoMainView,NSObject>)mainView;
 - (void)setMainView:(id<RhoMainView,NSObject>)view;

@@ -28,7 +28,9 @@
 #define _RHOSTD_H_
 
 #include "RhoPort.h"
+#ifndef OS_LINUX
 #define _GLIBCXX_CSTDLIB 1
+#endif
 namespace std
 {
 	using ::rand;	
@@ -50,7 +52,7 @@ typedef std::wstring StringW;
 typedef bool boolean;
 //#define Vector std::vector
 
-#define null 0
+//#define null 0
 
 inline String String_trimRight(const String& str)
 {
@@ -268,7 +270,7 @@ public:
     Type removeFirst()
     {
         if ( VectorPtr<Type>::isEmpty() )
-            return null;
+            return NULL;
 
         Type ptrFirst = VectorPtr<Type>::elementAt(0);
         VectorPtr<Type>::erase(VectorPtr<Type>::begin());

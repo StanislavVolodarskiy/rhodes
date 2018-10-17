@@ -33,6 +33,8 @@ namespace zlib
 local void gz_reset OF((gz_statep));
 local gzFile gz_open OF((const void *, int, const char *));
 
+#include "../ruby/posixnames.h"
+
 #if defined UNDER_CE
 
 /* Map the Windows error number in ERROR to a locale-dependent error message
@@ -245,7 +247,7 @@ local gzFile gz_open(const void* path, int fd, const char* mode)
 #if defined(_WIN32) && !defined(_WIN32_WCE)
         fd == -2 ? _wopen((const wchar_t*)path, oflag, 0666) :
 #endif
-        open((const char*)path, oflag, 0666));
+        fpopen((const char*)path, oflag, 0666));
     if (state->fd == -1) {
         free(state->path);
         free(state);

@@ -36,7 +36,7 @@ MaxLogFileSize=50000
 
 # where log will be posted by RhoConf.send_log or from the log menu
 # source is also open and up on http://github.com/rhomobile/rhologs, so you can deploy your own logserver
-logserver = 'http://rhologs.heroku.com'
+logserver = 'http://taulogservice.herokuapp.com'
 
 # log file prefix - contain human-readable text
 logname='<%=@app_name%>'
@@ -131,7 +131,21 @@ jqtouch_mode=1
 #dealy in seconds for splash screen image
 splash_screen='zoom;delay=3'
 
+# enable full screen mode - remove top status bar (with battery info etc.) from screen
+# also setup iphone_use_new_ios7_status_bar_style, iphone_full_screen and android_title in build.yml !
+#full_screen = 1
+
 use_bb_full_browser=6
 
 # finger scroll activation on windows XP/7/8/8.1/10
 use_kinetic_scroll_on_windows = 1
+
+# disable drag and drop operation in WebView for iOS >= 11.0
+#WebView.enableDragAndDrop = 0
+
+# disable bounce for iOS WebView
+#WebView.enableBounce = 0
+
+# Related to iOS applications's multitasking switcher. If you can have any private info on screen you can prevent system to use snapshot in task list UI.
+# by enable this option screenshot will be replaced by splash loading screen.
+#WebView.replaceContentBySplashWhenSnapshotBySystem = 1

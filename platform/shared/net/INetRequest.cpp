@@ -95,6 +95,28 @@ boolean CNetRequestHolder::isCancelled()
     }
 }
 
+void CNetRequestHolder::setAuthMethod( AuthMethod method )
+{
+  if ( m_pReq ) {
+    m_pReq->setAuthMethod(method);
+  }
+}
+
+void CNetRequestHolder::setAuthUser( const String& user )
+{
+  if ( m_pReq ) {
+    m_pReq->setAuthUser(user);
+  }
+}
+
+void CNetRequestHolder::setAuthPassword( const String& password )
+{
+    if ( m_pReq ) {
+    m_pReq->setAuthPassword(password);
+  }
+}
+
+
 /*static*/ String CNetRequestHolder::resolveUrl(const String& strUrl)
 {
     return RHODESAPPBASE().canonicalizeRhoUrl(strUrl);
@@ -120,17 +142,17 @@ CNetRequestWrapper::~CNetRequestWrapper()
 
 rho::net::CNetResponseWrapper CNetRequestWrapper::pullData(const String& strUrl, IRhoSession* oSession )
 {
-    return doRequest("GET",strUrl,String(),oSession,null);
+    return doRequest("GET",strUrl,String(),oSession,NULL);
 }
 
 rho::net::CNetResponseWrapper CNetRequestWrapper::pushData(const String& strUrl, const String& strBody, IRhoSession* oSession)
 {
-    return doRequest("POST",strUrl,strBody,oSession,null);
+    return doRequest("POST",strUrl,strBody,oSession,NULL);
 }
 
-rho::net::CNetResponseWrapper CNetRequestWrapper::pullCookies(const String& strUrl, const String& strBody, IRhoSession* oSession, Hashtable<String, String>* pHeaders)
+rho::net::CNetResponseWrapper CNetRequestWrapper::pullCookies(const String& strUrl, const String& strBody, IRhoSession* oSession)
 {
-    rho::net::CNetResponseWrapper oResp = doRequest("POST", strUrl, strBody, oSession, pHeaders);
+    rho::net::CNetResponseWrapper oResp = doRequest("POST", strUrl, strBody, oSession, NULL );
     if ( oResp.getRespCode() == 200 )
         oResp.setCharData(oResp.getCookies().c_str());
 		
@@ -252,6 +274,22 @@ void CNetRequestWrapper::cancel()
     m_pHolder->cancel();
   }
 }
+
+void CNetRequestWrapper::setAuthMethod( AuthMethod method )
+{
+  m_pReqImpl->setAuthMethod(method);
+}
+
+void CNetRequestWrapper::setAuthUser( const String& user )
+{
+  m_pReqImpl->setAuthUser(user);
+}
+
+void CNetRequestWrapper::setAuthPassword( const String& password )
+{
+  m_pReqImpl->setAuthPassword(password);
+}
+
 
 void CNetRequestWrapper::setCallback(rho::net::INetRequestCallback* callback )
 {

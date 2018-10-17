@@ -194,7 +194,7 @@ void CAppCallbacksQueue::callCallback(const String& strCallback)
 
     String strUrl = RHODESAPP().getBaseUrl();
     strUrl += strCallback;
-    NetResponse resp = getNetRequest().pullData( strUrl, null );
+    NetResponse resp = getNetRequest().pullData( strUrl, NULL );
     if ( !resp.isOK() )
     {
         boolean bTryAgain = false;
@@ -217,7 +217,7 @@ void CAppCallbacksQueue::callCallback(const String& strCallback)
             LOG(INFO) + "Change base url and try again.";
             strUrl = RHODESAPP().getBaseUrl();
             strUrl += strCallback;
-            resp = getNetRequest().pullData( strUrl, null );
+            resp = getNetRequest().pullData( strUrl, NULL );
         }
 
         if ( !resp.isOK() )
@@ -373,7 +373,7 @@ void CAppCallbacksQueue::processUiCreated()
     rho::String startPath = RHOCONF().getString("start_path");
 
     // handle security token validation
-    #ifndef OS_WP8
+    #if !defined(OS_WP8) && !defined(OS_UWP)
     rho::String invalidSecurityTokenStartPath =  RHOCONF().getString("invalid_security_token_start_path");
 
     if (RHODESAPP().isSecurityTokenNotPassed()) {
@@ -402,8 +402,7 @@ void CAppCallbacksQueue::processUiCreated()
 
 /*static*/ CRhodesApp* CRhodesApp::Create(const String& strRootPath, const String& strUserPath, const String& strRuntimePath)
 {
-    if ( m_pInstance != null) 
-        return (CRhodesApp*)m_pInstance;
+    if ( m_pInstance != NULL) return (CRhodesApp*)m_pInstance;
 
     m_pInstance = new CRhodesApp(strRootPath, strUserPath, strRuntimePath);
 
@@ -439,9 +438,11 @@ CRhodesApp::CRhodesApp(const String& strRootPath, const String& strUserPath, con
 #endif
 
     initAppUrls();
-
-	if(!m_isJSFSApp)
-		initHttpServer();
+#ifndef AJAXSERVER
+    if(!m_isJSFSApp) initHttpServer();
+#else
+    initHttpServer();
+#endif
 
     getSplashScreen().init();
 }
@@ -481,7 +482,7 @@ void CRhodesApp::run()
 {
     LOG(INFO) + "Starting RhodesApp main routine...";
 #ifndef RHO_NO_RUBY_API
-    if (!isJSApplication())
+    if (!isJSApplication() && !isNodeJSApplication())
     {
         RhoRubyStart();
         rubyext::CGeoLocation::Create();
@@ -496,7 +497,7 @@ void CRhodesApp::run()
 		sync::RhoconnectClientManager::syncThreadCreate();
 	}
 #ifndef RHO_NO_RUBY_API
-    if (!isJSApplication())
+    if (!isJSApplication() && !isNodeJSApplication())
     {
         LOG(INFO) + "RhoRubyInitApp...";
         RhoRubyInitApp();
@@ -520,14 +521,17 @@ void CRhodesApp::run()
     PROF_CREATE_COUNTER("LOW_FILE");
 	if(m_isJSFSApp)
 		RHODESAPP().notifyLocalServerStarted();
-  
+
 #ifdef OS_MACOSX
   bool shouldRunDirectQueue = true;
   net::CDirectHttpRequestQueue directQueue(*m_httpServer, *this );
-  
+
     if (RHOCONF().isExist("ios_direct_local_requests")) {
         shouldRunDirectQueue = RHOCONF().getBool("ios_direct_local_requests");
     }
+#ifdef RHODES_EMULATOR
+    shouldRunDirectQueue = false;
+#endif
 #endif
 
 
@@ -570,7 +574,7 @@ void CRhodesApp::run()
 
     getExtManager().close();
 
-    if (!isJSApplication())
+    if (!isJSApplication() && !isNodeJSApplication())
     {
         rubyext::CGeoLocation::Destroy();
     }
@@ -583,7 +587,7 @@ void CRhodesApp::run()
 
     db::CDBAdapter::closeAll();
 #ifndef RHO_NO_RUBY_API
-    if (!isJSApplication())
+    if (!isJSApplication() && !isNodeJSApplication())
     {
         RhoRubyStop();
     }
@@ -660,7 +664,7 @@ public:
         if ( !rho_ruby_is_started() )
             return;
 
-        getNetRequest().pushData( m_strCallback, m_strBody, null );
+        getNetRequest().pushData( m_strCallback, m_strBody, NULL );
     }
 };
 
@@ -672,7 +676,7 @@ void CRhodesApp::runCallbackInThread(const String& strCallback, const String& st
 static void callback_activateapp(void *arg, String const &strQuery)
 {
 #ifndef RHO_NO_RUBY_API
-    if (!RHODESAPP().isJSApplication())
+    if (!RHODESAPP().isJSApplication() && !RHODESAPP().isNodeJSApplication())
         rho_ruby_activateApp();
 #endif
 
@@ -683,7 +687,7 @@ static void callback_activateapp(void *arg, String const &strQuery)
 static void callback_deactivateapp(void *arg, String const &strQuery)
 {
 #ifndef RHO_NO_RUBY_API
-    if (!RHODESAPP().isJSApplication())
+    if (!RHODESAPP().isJSApplication() && !RHODESAPP().isNodeJSApplication())
         rho_ruby_deactivateApp();
 #endif
 
@@ -694,7 +698,7 @@ static void callback_deactivateapp(void *arg, String const &strQuery)
 static void callback_uicreated(void *arg, String const &strQuery)
 {
 #ifndef RHO_NO_RUBY_API
-    if (!RHODESAPP().isJSApplication())
+    if (!RHODESAPP().isJSApplication() && !RHODESAPP().isNodeJSApplication())
         rho_ruby_uiCreated();
 #endif
 
@@ -704,7 +708,7 @@ static void callback_uicreated(void *arg, String const &strQuery)
 static void callback_uidestroyed(void *arg, String const &strQuery)
 {
 #ifndef RHO_NO_RUBY_API
-    if (!RHODESAPP().isJSApplication())
+    if (!RHODESAPP().isJSApplication() && !RHODESAPP().isNodeJSApplication())
         rho_ruby_uiDestroyed();
 #endif
 
@@ -747,7 +751,7 @@ void CRhodesApp::callUiDestroyedCallback()
     if ( rho_ruby_is_started() )
     {
         String strUrl = m_strHomeUrl + "/system/uidestroyed";
-        NetResponse resp = getNetRequest().pullData( strUrl, null );
+        NetResponse resp = getNetRequest().pullData( strUrl, NULL );
         if ( !resp.isOK() )
         {
             LOG(ERROR) + "UI destroy callback failed. Code: " + resp.getRespCode() + "; Error body: " + resp.getCharData();
@@ -794,7 +798,7 @@ void CRhodesApp::callAppActiveCallback(boolean bActive)
             if ( rho_ruby_is_started() )
             {
                 String strUrl = m_strHomeUrl + "/system/deactivateapp";
-                NetResponse resp = getNetRequest().pullData( strUrl, null );
+                NetResponse resp = getNetRequest().pullData( strUrl, NULL );
                 if ( !resp.isOK() )
                 {
                     LOG(ERROR) + "deactivate app failed. Code: " + resp.getRespCode() + "; Error body: " + resp.getCharData();
@@ -846,7 +850,7 @@ String g_strBody;
 	{
 		 if ( !rho_ruby_is_started() )
 	            return 0;
-		 getNetRequest().pushData( g_strCallbackUrl, g_strBody, null );
+		 getNetRequest().pushData( g_strCallbackUrl, g_strBody, NULL );
 		 return 0;
 	}
 
@@ -873,7 +877,7 @@ void CRhodesApp::callCallbackWithData(String strCallbackUrl, String strBody, con
 #endif
 
     if (bWaitForResponse)
-        getNetRequest().pushData( strCallbackUrl, strBody, null );
+        getNetRequest().pushData( strCallbackUrl, strBody, NULL );
     else
 	{
 #if ( !defined(OS_MACOSX) && (defined(OS_WINDOWS_DESKTOP) ||  defined(RHODES_EMULATOR)) )
@@ -902,7 +906,7 @@ void CRhodesApp::callCallbackProcWithData(unsigned long oRubyCallbackProc, Strin
     strCallbackUrl = canonicalizeRhoUrl(strCallbackUrl);
 
     if (bWaitForResponse)
-        getNetRequest().pushData( strCallbackUrl, strBody, null );
+        getNetRequest().pushData( strCallbackUrl, strBody, NULL );
     else
         runCallbackInThread(strCallbackUrl, strBody);
 }
@@ -962,7 +966,7 @@ void CRhodesApp::callCameraCallback(String strCallbackUrl, const String& strImag
 
 
     strBody += "&rho_callback=1";
-    getNetRequest().pushData( strCallbackUrl, strBody, null );
+    getNetRequest().pushData( strCallbackUrl, strBody, NULL );
 }
 
 void CRhodesApp::callSignatureCallback(String strCallbackUrl, const String& strSignaturePath, 
@@ -980,7 +984,7 @@ void CRhodesApp::callSignatureCallback(String strCallbackUrl, const String& strS
 			strBody = "status=ok&signature_uri=db%2Fdb-files%2F" + strSignaturePath;
 		
 		strBody += "&rho_callback=1";
-		//getNetRequest().pushData( strCallbackUrl, strBody, null );
+		//getNetRequest().pushData( strCallbackUrl, strBody, NULL );
         runCallbackInThread(strCallbackUrl, strBody);
 	}
 	
@@ -1000,14 +1004,14 @@ void CRhodesApp::callDateTimeCallback(String strCallbackUrl, long lDateTime, con
     }
 
     strBody += "&rho_callback=1";
-    getNetRequest().pushData( strCallbackUrl, strBody, null );
+    getNetRequest().pushData( strCallbackUrl, strBody, NULL );
 }
 
 void CRhodesApp::callBluetoothCallback(String strCallbackUrl, const char* body) {
 	strCallbackUrl = canonicalizeRhoUrl(strCallbackUrl);
 	String strBody = body;
 	strBody += "&rho_callback=1";
-	getNetRequest().pushData( strCallbackUrl, strBody, null );
+	getNetRequest().pushData( strCallbackUrl, strBody, NULL );
 }
 
 void CRhodesApp::callPopupCallback(String strCallbackUrl, const String &id, const String &title)
@@ -1018,7 +1022,7 @@ void CRhodesApp::callPopupCallback(String strCallbackUrl, const String &id, cons
     strCallbackUrl = canonicalizeRhoUrl(strCallbackUrl);
     String strBody = "button_id=" + id + "&button_title=" + title;
     strBody += "&rho_callback=1";
-    getNetRequest().pushData( strCallbackUrl, strBody, null );
+    getNetRequest().pushData( strCallbackUrl, strBody, NULL );
 }
 
 static void callback_syncdb(void *arg, String const &/*query*/ )
@@ -1156,7 +1160,7 @@ const String& CRhodesApp::getRhoMessage(int nError, const char* szName)
 
     if ( rho_ruby_is_started() )
     {
-        NetResponse resp = getNetRequest().pullData( strUrl, null );
+        NetResponse resp = getNetRequest().pullData( strUrl, NULL );
         if ( !resp.isOK() )
         {
             LOG(ERROR) + "getRhoMessage failed. Code: " + resp.getRespCode() + "; Error body: " + resp.getCharData();
@@ -1516,7 +1520,12 @@ void CRhodesApp::initHttpServer()
     strAppRootPath += "apps";
 #endif
 
+#ifdef OS_SAILFISH
+    //m_httpServer = new net::CHttpServer(atoi(getFreeListeningPort()), strAppRootPath, strAppUserPath, strRuntimePath, true, false); This thing doesn't work
     m_httpServer = new net::CHttpServer(atoi(getFreeListeningPort()), strAppRootPath, strAppUserPath, strRuntimePath);
+#else
+    m_httpServer = new net::CHttpServer(atoi(getFreeListeningPort()), strAppRootPath, strAppUserPath, strRuntimePath);
+#endif
     m_httpServer->register_uri("/system/geolocation", rubyext::CGeoLocation::callback_geolocation);
     m_httpServer->register_uri("/system/syncdb", callback_syncdb);
     m_httpServer->register_uri("/system/redirect_to", callback_redirect_to);
@@ -1586,6 +1595,27 @@ const char* CRhodesApp::getFreeListeningPort()
 	LOG(INFO) + "Free listening port: " + m_strListeningPorts;
 
     return m_strListeningPorts.c_str();
+}
+    
+const char* CRhodesApp::getNodeJSListeningPort() {
+    if ( m_strNodeJSListeningPorts.length() > 0 )
+        return m_strNodeJSListeningPorts.c_str();
+    
+    int port = rho_conf_getInt("nodejs_local_server_port");
+    if (port == 0) {
+        port = determineFreeListeningPort();
+    }
+    if (port < 0)
+        port = 0;
+    if (port > 65535)
+        port = 0;
+    
+    m_strNodeJSListeningPorts = convertToStringA(port);
+    m_nNodeJSListeningPorts = port;
+    
+    LOG(INFO) + "Free Node.js listening port: " + m_strNodeJSListeningPorts;
+    
+    return m_strNodeJSListeningPorts.c_str();
 }
 
 int CRhodesApp::determineFreeListeningPort()
@@ -1729,10 +1759,19 @@ void CRhodesApp::initAppUrls()
         m_strHomeUrl = "http://127.0.0.1:";
     }
     
-    m_strHomeUrl += getFreeListeningPort();
+    if (isNodeJSApplication()) {
+        m_strHomeUrl += getNodeJSListeningPort();
+    }
+    else {
+        m_strHomeUrl += getFreeListeningPort();
+    }
 
 #ifndef RHODES_EMULATOR
+    #ifndef OS_SAILFISH
     m_strLoadingPagePath = "file://" + getRhoRootPath() + "apps/app/loading.html";
+    #else
+    m_strLoadingPagePath = getRhoRootPath() + "apps/app/loading.html";
+    #endif
 	m_strLoadingPngPath = getRhoRootPath() + "apps/app/loading.png";
 #else
     m_strLoadingPagePath = "file://" + getRhoRootPath() + "app/loading.html";
@@ -2095,7 +2134,7 @@ boolean CRhodesApp::callPushCallbackWithJsonBody(const String& strUrl, const Str
             strBody += strParams;
         }
 
-        NetResponse resp = getNetRequest().pushData( strCanonicalUrl, strBody, null );
+        NetResponse resp = getNetRequest().pushData( strCanonicalUrl, strBody, NULL );
         if (!resp.isOK())
             LOG(ERROR) + "Push notification failed. Code: " + resp.getRespCode() + "; Error body: " + resp.getCharData();
         else
@@ -2152,7 +2191,7 @@ void CRhodesApp::callScreenRotationCallback(int width, int height, int degrees)
 		RAWLOG_ERROR(i.c_str());
 
 			
-		NetResponse resp = getNetRequest().pushData( m_strScreenRotationCallback, strBody, null);
+		NetResponse resp = getNetRequest().pushData( m_strScreenRotationCallback, strBody, NULL);
         if (!resp.isOK()) {
             LOG(ERROR) + "Screen rotation notification failed. Code: " + resp.getRespCode() + "; Error body: " + resp.getCharData();
         }
@@ -2240,7 +2279,7 @@ void CRhodesApp::loadUrl(String url, int nTabIndex/* = -1*/)
     {
         url = canonicalizeRhoUrl(url);
         if ( rho_ruby_is_started() )
-            getNetRequest().pushData( url,  "rho_callback=1", null );
+            getNetRequest().pushData( url,  "rho_callback=1", NULL );
     }
     else if (js_callback)
         rho_webview_execute_js(url.c_str(), nTabIndex);
@@ -2640,6 +2679,12 @@ int rho_http_get_port()
   return RHODESAPP().getLocalServerPort();
 }
 
+int rho_nodejs_get_port()
+{
+  return RHODESAPP().getNodeJSServerPort();
+}
+    
+    
 #ifdef OS_MACOSX
 const char* rho_http_direct_request( const char* method, const char* uri, const char* query, const void* headers, const char* body, int bodylen, int* responseLength )
 {
@@ -2911,9 +2956,10 @@ int rho_rhodesapp_isrubycompiler()
 void rho_net_request(const char *url)
 {
     String strCallbackUrl = RHODESAPP().canonicalizeRhoUrl(url);
-    getNetRequest().pullData(strCallbackUrl.c_str(), null);
+    getNetRequest().pullData(strCallbackUrl.c_str(), NULL);
 }
     
+//TODO: this function can crash application if you use it many times (it creates threads and probably don't delete them)
 void rho_net_request_with_data_in_separated_thread(const char *url, const char *str_body) {
     String strCallbackUrl = RHODESAPP().canonicalizeRhoUrl(url);
     String strBody = str_body;
@@ -2972,6 +3018,10 @@ void rho_rhodesapp_setStartParametersOriginal(const char* szParams)
 
 int rho_rhodesapp_is_application_active() {
     return RHODESAPP().isApplicationActive() ? 1 : 0;
+}
+    
+int rho_rhodesapp_is_nodejs_app() {
+    return RHODESAPP().isNodeJSApplication() ? 1 : 0;
 }
     
 int rho_rhodesapp_canstartapp(const char* szCmdLine, const char* szSeparators)

@@ -537,7 +537,7 @@ if defined?(RHOCONNECT_CLIENT_PRESENT)
         hash_props = !src['schema'].nil? ? src['schema']["property"] : src["property"]
         if (!hash_props.nil?)
           str_props = hash_props.keys.join(',')
-          Rho::RhoConnectClient.set_source_property(src['source_id'], 'freezed', str_props )
+          Rho::RhoConnectClient.set_source_property(src['source_id'].to_s, 'freezed', str_props )
         end
             end
         end
@@ -1010,9 +1010,15 @@ end
       err_page = nil
       if exception && exception.is_a?(::Rhom::RecordNotFound)
         err_page = RhoApplication::get_app_path(APPNAME) + 'E400' + RHO_ERB_EXT
+        if !Rho::file_exist?(err_page)
+           err_page = err_page + RHO_ENCRYPTED_EXT
+        end
         err_page = nil unless ::Rho::file_exist?(err_page)
       elsif exception
         err_page = RhoApplication::get_app_path(APPNAME) + 'E500' + RHO_ERB_EXT
+        if !Rho::file_exist?(err_page)
+           err_page = err_page + RHO_ENCRYPTED_EXT
+        end
         err_page = nil unless ::Rho::file_exist?(err_page)
       end
 

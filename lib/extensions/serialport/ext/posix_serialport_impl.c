@@ -3,6 +3,7 @@
  * Alan Stern <stern@rowland.harvard.edu>
  * Daniel E. Shipton <dshipton@redshiptechnologies.com>
  * Ryan C. Payne <rpayne-oss@bullittsystems.com>
+ * Manuel "MaG" A. Güílamo <maguilamo.c@gmail.com>
  *
  * This code is hereby licensed for public consumption under either the
  * GNU GPL v2 or greater.
@@ -90,8 +91,16 @@ VALUE sp_create_impl(class, _port)
    char *port;
    char *ports[] = {
 #if defined(OS_LINUX) || defined(OS_CYGWIN)
+
+  //RHO
+  #if !defined(OS_SAILFISH)
       "/dev/ttyS0", "/dev/ttyS1", "/dev/ttyS2", "/dev/ttyS3",
       "/dev/ttyS4", "/dev/ttyS5", "/dev/ttyS6", "/dev/ttyS7"
+  #else // OS_SAILFISH
+      "/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2", "/dev/ttyUSB3",
+      "/dev/ttyUSB4", "/dev/ttyUSB5", "/dev/ttyUSB6", "/dev/ttyUSB7"
+  #endif //OS_SAILFISH
+
 #elif defined(OS_FREEBSD) || defined(OS_NETBSD) || defined(OS_OPENBSD) || defined(OS_DARWIN)
       "/dev/cuaa0", "/dev/cuaa1", "/dev/cuaa2", "/dev/cuaa3",
       "/dev/cuaa4", "/dev/cuaa5", "/dev/cuaa6", "/dev/cuaa7"
@@ -109,7 +118,14 @@ VALUE sp_create_impl(class, _port)
    struct termios params;
 
    NEWOBJ(sp, struct RFile);
+
+//RHO
+#ifdef OS_SAILFISH
+   rb_secure(1);
+#else
    rb_secure(4);
+#endif
+
    OBJSETUP(sp, class, T_FILE);
    MakeOpenFile((VALUE) sp, fp);
 
@@ -125,8 +141,7 @@ VALUE sp_create_impl(class, _port)
          break;
 
       case T_STRING:
-         Check_SafeStr(_port);
-         port = RSTRING_PTR(_port);
+         port = StringValueCStr(_port);
          break;
 
       default:
@@ -352,15 +367,38 @@ VALUE sp_set_modem_params_impl(argc, argv, self)
       case EVEN:
          params.c_cflag |= PARENB;
          params.c_cflag &= ~PARODD;
+#ifdef CMSPAR
+         params.c_cflag &= ~CMSPAR;
+#endif
          break;
 
       case ODD:
          params.c_cflag |= PARENB;
          params.c_cflag |= PARODD;
+#ifdef CMSPAR
+         params.c_cflag &= ~CMSPAR;
+#endif
          break;
+
+#ifdef CMSPAR
+      case SPACE:
+         params.c_cflag |= PARENB;
+         params.c_cflag &= ~PARODD;
+         params.c_cflag |= CMSPAR;
+         break;
+
+      case MARK:
+         params.c_cflag |= PARENB;
+         params.c_cflag |= PARODD;
+         params.c_cflag |= CMSPAR;
+         break;
+#endif
 
       case NONE:
          params.c_cflag &= ~PARENB;
+#ifdef CMSPAR
+         params.c_cflag &= ~CMSPAR;
+#endif
          break;
 
       default:
@@ -729,5 +767,39 @@ VALUE sp_get_dtr_impl(self)
 
    return INT2FIX(ls.dtr);
 }
+
+VALUE sp_flush_input_data_impl(self)
+VALUE self;
+{
+	int fd;
+	int ret;
+
+	fd = get_fd_helper(self);
+
+	ret = tcflush(fd, TCIFLUSH);
+	if(ret<0) {
+		return Qfalse;
+	}
+
+	return Qtrue;
+}
+
+VALUE sp_flush_output_data_impl(self)
+VALUE self;
+{
+	int fd;
+	int ret;
+
+	fd = get_fd_helper(self);
+
+	ret = tcflush(fd, TCOFLUSH);
+	if(ret<0) {
+		return Qfalse;
+	}
+
+	return Qtrue;
+}
+
+
 
 #endif /* !defined(OS_MSWIN) && !defined(OS_BCCWIN) && !defined(OS_MINGW) */

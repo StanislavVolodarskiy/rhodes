@@ -34,10 +34,14 @@
 #include "common/RhoMutexLock.h"
 #include "common/RhoTime.h"
 #include "common/RhoThread.h"
-
+#include "common/RhoConf.h"
+#if defined(OS_MACOSX) && !defined(RHODES_EMULATOR)
+//#include <tr1/memory>
+#else
+#include <memory>
+#endif
 namespace rho {
 
-namespace common{ class RhoSettings; }
 class LogCategory;
 
 struct ILogSink{
@@ -54,15 +58,18 @@ public:
     virtual String collect() = 0;
 };
 
-class LogSettings{
+class LogSettings : public common::IRhoSettingsListener {
     
     class MemoryInfoCollectorThread : public common::CRhoThread
     {
         unsigned int            m_collectMemoryIntervalMilliseconds;
         IMemoryInfoCollector*   m_pCollector;
         LogSettings&            m_logSettings;
-        
-        mutable common::CMutex  m_accessLock;
+#ifdef mutexSmartPointer
+        mutable mutexSmartPointer m_accessLock = mutexSmartPointer(new common::CMutex());
+#else
+        mutable common::CMutex m_accessLock;
+#endif
     public:
         MemoryInfoCollectorThread( LogSettings& logSettings );
         virtual void run();
@@ -102,8 +109,13 @@ class LogSettings{
     Hashtable<ILogSink*, bool> m_pAuxSinks;
     IMemoryInfoCollector* m_pMemoryInfoCollector;
 
+#ifdef mutexSmartPointer
+    static mutexSmartPointer m_FlushLock;
+    static mutexSmartPointer m_CatLock;
+#else
     static common::CMutex m_FlushLock;
     static common::CMutex m_CatLock;
+#endif
 
 public:
     LogSettings();
@@ -183,6 +195,8 @@ public:
 
 private:
 	void internalSinkLogMessage( String& strMsg );
+    virtual void onSettingUpdated( const String& name, const String& newVal );
+
 };
 
 extern LogSettings g_LogSettings;

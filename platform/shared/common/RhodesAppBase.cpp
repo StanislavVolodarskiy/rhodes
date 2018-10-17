@@ -42,13 +42,13 @@ namespace common{
 
 IMPLEMENT_LOGCLASS(CRhodesAppBase,"RhodesApp");
 CRhodesAppBase* CRhodesAppBase::m_pInstance = 0;
-#ifdef OS_WP8
+#if defined(OS_WP8) || defined(OS_UWP)
 	String CRhodesAppBase::m_strHomeUrl = "";
 #endif
 
 /*static*/ CRhodesAppBase* CRhodesAppBase::Create(const String& strRootPath, const String& strUserPath, const String& strRuntimePath)
 {
-    if ( m_pInstance != null) 
+    if ( m_pInstance != NULL) 
         return m_pInstance;
 
     m_pInstance = new CRhodesAppBase(strRootPath, strUserPath, strRuntimePath);
@@ -76,6 +76,10 @@ CRhodesAppBase::CRhodesAppBase(const String& strRootPath, const String& strUserP
     m_bJSApplication   = false;
 #endif
 
+    const char* nodejs_app = get_app_build_config_item("nodejs_application");
+    
+    m_bNodeJSApplication = nodejs_app && (strcmp(nodejs_app,"true") == 0);
+    
     initAppUrls();
 }
 	
@@ -175,7 +179,7 @@ String CRhodesAppBase::canonicalizeRhoUrl(const String& strUrl) const
 				retPath.insert( 5, "/");
 
 			return retPath;
-#elif defined(OS_WP8)
+#elif defined(OS_WP8) || defined(OS_UWP)
             return retPath.substr(7);
 #else
             return retPath;
@@ -234,7 +238,7 @@ void rho_do_send_log(rho::apiGenerator::CMethodResult& oResult)
     NetRequest oNetRequest;
     oNetRequest.setSslVerifyPeer(false);
     
-	NetResponse resp = getNetRequest(&oNetRequest).pushMultipartData( strQuery, oItem, pSession, null );
+	NetResponse resp = getNetRequest(&oNetRequest).pushMultipartData( strQuery, oItem, pSession, NULL );
 
     LOGCONF().setLogToFile(bOldSaveToFile);
     
@@ -299,7 +303,7 @@ boolean CRhodesAppBase::sendLogInSameThread()
 			if ( m_strPushCallbackParams.length() > 0 )
 				strBody += "&" + m_strPushCallbackParams;
 			
-			NetResponse resp = getNetRequest().pushData( m_strPushCallback, strBody, null );
+			NetResponse resp = getNetRequest().pushData( m_strPushCallback, strBody, NULL );
 			if (!resp.isOK())
 				LOG(ERROR) + "Push notification failed. Code: " + resp.getRespCode() + "; Error body: " + resp.getCharData();
 			else
@@ -351,7 +355,7 @@ int rho_sys_unzip_file(const char* szZipPath, const char* psw, const char* outpu
   case RHO_ZIP_FORMAT_ZIP:  return rho_internal_unzip_zip(szZipPath, psw); break;
   case RHO_ZIP_FORMAT_GZIP: return rho_internal_unzip_gzip(szZipPath, outputFilename); break;
   }
-  
+
   return -1;
 }
 
@@ -359,17 +363,17 @@ static int rho_internal_unzip_zip(const char* szZipPath, const char* psw)
 {
     rho::common::CFilePath oPath(szZipPath);
     rho::String strBaseDir = oPath.getFolderName();
-#if defined(UNICODE) && defined(WIN32) && !defined(OS_WP8)
+#if defined(UNICODE) && defined(WIN32) && !defined(OS_WP8) && !defined(OS_UWP)
     rho::StringW strZipPathW;
     rho::common::convertToStringW(szZipPath, strZipPathW);
     HZIP hz = OpenZipFile(strZipPathW.c_str(), psw);
     if ( !hz )
         return -1;
-
 	// Set base for unziping
     SetUnzipBaseDir(hz, rho::common::convertToStringW(strBaseDir).c_str());
 #else
     HZIP hz = OpenZipFile((TCHAR*)szZipPath, psw);
+    
     if ( !hz )
         return -1;
 
@@ -395,7 +399,7 @@ static int rho_internal_unzip_zip(const char* szZipPath, const char* psw)
     		res = UnzipItem(hz, zi, ze.name);
             if ( res != 0 )
                 LOG(ERROR) + "Unzip item failed: " + res + "; " +
-				#if defined(OS_WP8)
+				#if defined(OS_WP8) || defined(OS_UWP)
 				(char*)
 				#endif
 				ze.name;
@@ -436,7 +440,8 @@ const char* rho_rhodesapp_getplatform()
 
     if ( strPlatform.compare("wp8") == 0 )
         return "WP8";
-
+    if ( strPlatform.compare("uwp") == 0 )
+        return "UWP";
     if ( strPlatform.compare("android") == 0 )
         return "ANDROID";
 
@@ -455,6 +460,8 @@ const char* rho_rhodesapp_getplatform()
 #elif defined(WINDOWS_PLATFORM)
 #if defined(OS_WP8)
 	return "WP8";
+#elif defined(OS_UWP)
+    return "UWP";
 #else
 	return "WINDOWS";
 #endif
@@ -569,15 +576,16 @@ int rho_base64_decode(const char *src, int srclen, char *dst)
 	void rho_net_request_with_data(const char *url, const char *str_body)
 	{
 		rho::String strCallbackUrl = RHODESAPPBASE().canonicalizeRhoUrl(url);
-		getNetRequest().pushData(strCallbackUrl.c_str(), str_body, null);
+		getNetRequest().pushData(strCallbackUrl.c_str(), str_body, NULL);
 	}
     
     
-    const char* rho_app_canonicalize_rho_url(const char* url) {
-        static char res[FILENAME_MAX];
+    int rho_app_canonicalize_rho_url(const char* url, char* result, int max_len) {
         rho::String s_res = RHODESAPPBASE().canonicalizeRhoUrl(url);
-        strncpy(res, s_res.c_str(), sizeof(res)-1);
-        return res;
+        if (result != NULL) {
+            strncpy(result, s_res.c_str(), max_len);
+        }
+        return (int)s_res.length();
     }
 
 } //extern "C"
@@ -607,4 +615,18 @@ int rho_sys_set_do_not_bakup_attribute(const char* path, int value)
     return 1;
 }
 
+
 #endif
+
+extern "C" int tau_decrypt_file(const char* filebuf, int filebuf_len, char* decrypted_buf, int maxlen, const char* key);
+
+extern "C" int rho_decrypt_file(const char* filebuf, int filebuf_len, char* decrypted_buf, int maxlen ) {
+    // execute function from extension "decryptstub"(empty implementstion) or "decrypt"(used openssl - binary from openssl.so)
+#if (defined(OS_ANDROID) || defined(OS_MACOSX)) && !defined(RHODES_EMULATOR)
+    const char* key = get_app_build_config_item("encrypt_files_key");
+    return tau_decrypt_file(filebuf, filebuf_len, decrypted_buf, maxlen, key);
+#else
+    //memcpy(decrypted_buf, filebuf, filebuf_len);
+    return filebuf_len;
+#endif
+}

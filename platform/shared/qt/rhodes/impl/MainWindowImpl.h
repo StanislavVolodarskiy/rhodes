@@ -71,6 +71,7 @@ public:
 
     // proxy methods:
     bool init(IMainWindowCallback* callback, const wchar_t* title);
+    void diconnectFromUI();
     void setCallback(IMainWindowCallback* callback);
     void messageLoop(void);
     void navigate(const wchar_t* url, int index);
@@ -105,7 +106,7 @@ public:
 private:
     bool m_started;
     void* qtMainWindow;
-    void* qtApplication;
+    //void* qtApplication;
 
 private:
     static int m_screenWidth;

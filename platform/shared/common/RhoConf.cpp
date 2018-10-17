@@ -226,7 +226,6 @@ int RhoSettings::getInt(const char* szName){
 	std::map<String,String>::iterator it = m_mapValues.find(szName);
 	if ( it != m_mapValues.end() )
         return atoi(it->second.c_str());
-
     return 0;
 }
 
@@ -236,13 +235,16 @@ bool   RhoSettings::getBool(const char* szName){
 
 void   RhoSettings::setString(const char* szName, const String& str, boolean bSaveToFile){
     m_mapValues[szName] = str;
+    notifyListeners( szName, str );
 
     if ( bSaveToFile )
         saveToFile(szName);
 }
 
 void   RhoSettings::setInt(const char* szName, int nVal, boolean bSaveToFile){
-    m_mapValues[szName] = common::convertToStringA(nVal);
+    const String sVal = common::convertToStringA(nVal);
+    m_mapValues[szName] = sVal;
+    notifyListeners( szName, sVal );
 
     if ( bSaveToFile )
         saveToFile(szName);
@@ -262,6 +264,14 @@ void  RhoSettings::removeProperty(const char* szName, boolean bSaveToFile)
     m_mapValues.remove(szName);
     if ( bSaveToFile ) 
         saveToFile( szName, true );
+}
+
+void RhoSettings::notifyListeners( const String& name, const String& newVal )
+{
+    for ( int i = 0; i < m_listeners.size(); ++i )
+    {
+        m_listeners[i]->onSettingUpdated( name, newVal );
+    }
 }
 
 }

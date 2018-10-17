@@ -13,11 +13,14 @@ public:
     virtual void getPlatform(CMethodResult& oResult);
     virtual void getHasCamera(CMethodResult& oResult);
     virtual void getPhoneNumber(CMethodResult& oResult);
+    virtual void getExternalStorageDirectoryPath(CMethodResult& oResult);
     virtual void getDevicePushId(CMethodResult& oResult);
     virtual void getOsVersion(CMethodResult& oResult);
     virtual void getIsSymbolDevice(CMethodResult& oResult);
     virtual void getLocalServerPort(CMethodResult& oResult);
     virtual void setLocalServerPort( int value, CMethodResult& oResult);
+    virtual void getNodejsServerPort(CMethodResult& oResult);
+    virtual void setNodejsServerPort( int value, CMethodResult& oResult);
     virtual void getFreeServerPort(rho::apiGenerator::CMethodResult& oResult);
     virtual void getHasTouchscreen(rho::apiGenerator::CMethodResult& oResult);
     virtual void getHasSqlite(rho::apiGenerator::CMethodResult& oResult);
@@ -68,6 +71,8 @@ public:
     virtual void setHttpProxyURI( const rho::String& httpProxyURI, rho::apiGenerator::CMethodResult& oResult);
 
     virtual void hideSplashScreen(rho::apiGenerator::CMethodResult& oResult);
+
+    virtual void getSystemInfo(rho::apiGenerator::CMethodResult& oResult);
 
     DEFINE_LOGCLASS
 };

@@ -423,6 +423,13 @@ static BOOL makeHiddenUntilLoadContent = YES;
             fs = fsc;
         }
         
+        if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone) {
+            CGSize screenSize = [[UIScreen mainScreen] bounds].size;
+            if (screenSize.height == 812.0f)
+                //NSLog(@"iPhone X");
+                fs = "1";
+        }
+        
         if ((fs[0] == '0')) {
             wFrame.origin.y += 20;
             wFrame.size.height -= 20;
@@ -939,7 +946,7 @@ static BOOL makeHiddenUntilLoadContent = YES;
         //else {
 
         NSString *redirect = nil;
-        if ([cleared_url hasPrefix:@"file:"]) {
+        if ([cleared_url hasPrefix:@"file:"] || rho_rhodesapp_is_nodejs_app()) {
             redirect = cleared_url;
         }
         else {

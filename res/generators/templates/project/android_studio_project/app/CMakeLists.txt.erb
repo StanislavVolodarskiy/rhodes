@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.4.1)
+
+PROJECT(RhodesProject)
+set(CMAKE_BUILD_TYPE <%= @buildMode %>)
+
+<%= @externalDeps %>
+
+add_subdirectory(./curl)
+add_subdirectory(./ruby)
+add_subdirectory(./sqlite)
+add_subdirectory(./json)
+add_subdirectory(./rholog)
+add_subdirectory(./rhocommon)
+add_subdirectory(./rhodb)
+add_subdirectory(./rhosync)
+add_subdirectory(./rhodes)

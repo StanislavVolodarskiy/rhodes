@@ -30,24 +30,36 @@
 #include "common/RhoFilePath.h"
 #include "logging/RhoLog.h"
 
-#ifdef OS_WP8
+#if defined(OS_WP8) || defined(OS_UWP)
 extern "C" void recursiveDeleteDirectory(const std::wstring &path);
 #endif
 
-#if !defined(WINDOWS_PLATFORM)
+#if defined(WINDOWS_PLATFORM) && !defined(OS_WP8) && !defined(OS_UWP)
+#include <windows.h>
+#include <shellapi.h>
+#endif
+
+
+//#if !defined(WINDOWS_PLATFORM)
+#if !defined(OS_UWP) && !defined(OS_WINCE)
 #include <dirent.h>
-#else
+#elif !defined(OS_WINCE)
+#include "../win32/include/dirent.h"
+#endif
+//#else
+
 #  ifndef S_ISDIR
 #    define S_ISDIR(m) ((_S_IFDIR & m) == _S_IFDIR)
 #  endif
 #ifndef S_ISREG
 #   define S_ISREG(m) ((m & S_IFMT) == S_IFREG)
 #endif
-//#ifndef RHO_NO_RUBY
+
+#ifdef _WIN32_WCE
 extern "C"{
+#define rb_encoding void
 #include "win32/dir.h"
 }
-//#endif //RHO_NO_RUBY
 #define dirent direct
 #endif
 
@@ -58,7 +70,7 @@ extern "C"{
     extern "C" int _mkdir(const char * dir);
     extern "C" int _rmdir(const char * dir);
 
-#if !defined(OS_WP8) && !defined(RHODES_QT_PLATFORM)
+#if !defined(OS_WP8) && !defined(OS_UWP) && !defined(RHODES_QT_PLATFORM)
     extern "C" int  _unlink(const char *path);
 #endif
 
@@ -355,10 +367,15 @@ int CRhoFile::getPos() const {
     if ( !isOpened() )
         return -1;
 
+    #ifdef OS_LINUX
+    off_t pos;
+    if((pos = ftello(m_file))!= -1)
+    #else
     fpos_t pos;
     if(fgetpos(m_file, &pos) == 0)
+    #endif
     {
-        return pos;
+        return (int)pos;
     } else
     {
         return -1;
@@ -614,7 +631,7 @@ void CRhoFile::deleteFilesInFolder(const char* szFolderPath)
     
 /*static*/ unsigned int CRhoFile::deleteFolder(const char* szFolderPath) 
 {
-#if defined(WINDOWS_PLATFORM) && !defined(OS_WP8)
+#if defined(WINDOWS_PLATFORM) && !defined(OS_WP8) && !defined(OS_UWP)
 
 	StringW  swPath;
     convertToStringW(szFolderPath, swPath);
@@ -638,7 +655,7 @@ void CRhoFile::deleteFilesInFolder(const char* szFolderPath)
     delete name;
 
     return result == 0 ? 0 : (unsigned int)-1;
-#elif defined(OS_WP8)
+#elif defined(OS_WP8) || defined(OS_UWP)
 	StringW  swPath;
     convertToStringW(szFolderPath, swPath);
 	recursiveDeleteDirectory(swPath);
@@ -786,7 +803,7 @@ extern "C" void rho_file_set_fs_mode(int mode) {
 }
 #endif
 
-#if defined(OS_MACOSX) || defined(OS_ANDROID)
+#if defined(OS_MACOSX) || defined(OS_ANDROID) || defined(OS_LINUX)
     void rho_file_impl_move_folders_content_to_another_folder(const char* szSrcFolderPath, const char* szDstFolderPath) {
         
     }

@@ -1,4 +1,19 @@
-QT -= core
+greaterThan(QT_MINOR_VERSION, 6): {
+    CONFIG += c++14
+    DEFINES += RHODES_VERSION_2
+    DEFINES += AJAXSERVER
+}
+
+equals(QT_MAJOR_VERSION, 5) {
+    equals(QT_MINOR_VERSION, 6) {
+        DEFINES += OS_SAILFISH
+        QT += core
+    }
+}
+
+lessThan(QT_MINOR_VERSION, 6): {
+    DEFINES += RHODES_VERSION_1
+}
 
 TARGET = rholib
 TEMPLATE = lib
@@ -10,6 +25,9 @@ INCLUDEPATH += ../..\
 ../../../../lib/commonAPI
 
 macx {
+  greaterThan(QT_MINOR_VERSION, 6): {
+      DEFINES += RHODES_MAC_BUILD
+  }
   DESTDIR = ../../../osx/bin/rholib
   OBJECTS_DIR = ../../../osx/bin/rholib/tmp
   INCLUDEPATH += ../../curl/include
@@ -22,29 +40,44 @@ macx {
 }
 
 win32 {
+  greaterThan(QT_MINOR_VERSION, 6): {
+      DEFINES += CPP_ELEVEN
+  }
   DESTDIR = ../../../win32/bin/rholib
   OBJECTS_DIR = ../../../win32/bin/rholib/tmp
-  DEFINES += WIN32 _WINDOWS _CRT_SECURE_NO_WARNINGS _UNICODE UNICODE
+  DEFINES += WIN32 _WINDOWS _CRT_SECURE_NO_WARNINGS _UNICODE UNICODE WIN32_LEAN_AND_MEAN
   Debug {
     DEFINES += _DEBUG DEBUG
   }
   Release {
     DEFINES += _NDEBUG NDEBUG
   }
+  INCLUDEPATH += ../../../win32/include
   HEADERS += ../../rubyext/WebView.h
+
+    QMAKE_CXXFLAGS_RELEASE += /MP9 /O2
+    QMAKE_CXXFLAGS_DEBUG += /MP9 /O2
+
+    QMAKE_CFLAGS_RELEASE += /O2 /MD
+    QMAKE_CFLAGS_RELEASE_WITH_DEBUGINFO += /O2
+    QMAKE_CFLAGS_DEBUG += /Zi /MDd
 }
 
 unix:!macx {
-  DESTDIR = ../../../linux/bin/rholib
-  OBJECTS_DIR = ../../../linux/bin/rholib/tmp
-  INCLUDEPATH += ../../curl/include
+  DESTDIR = $$PWD/../../../linux/bin/rholib
+  OBJECTS_DIR = $$PWD/../../../linux/bin/rholib/tmp
+  INCLUDEPATH += $$PWD/../../curl/include
   DEFINES += _GNU_SOURCE
-  HEADERS += ../../common/PosixThreadImpl.h\
-../../net/CURLNetRequest.h\
-../../net/ssl.h
-  SOURCES += ../../common/PosixThreadImpl.cpp\
-../../net/CURLNetRequest.cpp\
-../../net/ssl.cpp
+  HEADERS += $$PWD/../../common/PosixThreadImpl.h\
+  $$PWD/../../net/CURLNetRequest.h\
+  $$PWD/../../net/ssl.h
+  SOURCES += $$PWD/../../common/PosixThreadImpl.cpp\
+  $$PWD/../../net/CURLNetRequest.cpp\
+  $$PWD/../../net/ssl.cpp
+  DEFINES += OS_SAILFISH OS_LINUX
+
+  QMAKE_CFLAGS += -fvisibility=hidden
+  QMAKE_CXXFLAGS += -fvisibility=hidden
 }
 
 DEFINES += RHODES_QT_PLATFORM
@@ -58,6 +91,8 @@ DEFINES += RHODES_QT_PLATFORM
   QMAKE_CXXFLAGS_WARN_ON += -Wno-extra -Wno-unused -Wno-sign-compare -Wno-format -Wno-parentheses
   # QMAKE_CFLAGS += -fvisibility=hidden
   # QMAKE_CXXFLAGS += -fvisibility=hidden
+  QMAKE_CFLAGS_DEBUG -= -O2
+  QMAKE_CXXFLAGS_DEBUG -= -O2
 }
 win32 {
   QMAKE_CFLAGS_WARN_ON += /wd4189 /wd4018 /wd4189 /wd4996
@@ -69,7 +104,6 @@ win32 {
 HEADERS += ../../common/RhoAppAdapter.h\
 ../../common/IRhoThreadImpl.h\
 ../../common/RhoThread.h\
-../../unzip/unzip.h\
 ../../common/RhodesAppBase.h\
 ../../common/RhodesApp.h\
 ../../common/RhoConf.h\
@@ -106,33 +140,17 @@ HEADERS += ../../common/RhoAppAdapter.h\
 ../../common/map/ESRIMapEngine.h\
 ../../common/map/GoogleMapEngine.h\
 ../../common/map/MapEngine.h\
-../../unzip/zip.h\
 ../../common/push/IRhoPushClient.h\
 ../../common/push/RhoPushManager.h\
 ../../api_generator/BaseClasses.h\
 ../../api_generator/GeneratorQueue.h\
 ../../api_generator/MethodResult.h\
 ../../api_generator/js_helpers.h\
-../../api_generator/StringifyHelper.h\
-../../unzip/gunzip.h\
-../../unzip/crc32.h\
-../../unzip/deflate.h\
-../../unzip/inffast.h\
-../../unzip/inffixed.h\
-../../unzip/inflate.h\
-../../unzip/gzguts.h\
-../../unzip/inftrees.h\
-../../unzip/trees.h\
-../../unzip/unzip.h\
-../../unzip/zconf.h\
-../../unzip/zip.h\
-../../unzip/zlib.h\
-../../unzip/zutil.h
+../../api_generator/StringifyHelper.h
 
 SOURCES += ../../common/RhoTime.cpp\
 ../../rubyext/RhoAppAdapter.cpp\
 ../../common/RhoThread.cpp\
-../../unzip/unzip.cpp\
 ../../common/RhodesAppBase.cpp\
 ../../common/RhodesApp.cpp\
 ../../common/RhoConf.cpp\
@@ -165,7 +183,25 @@ SOURCES += ../../common/RhoTime.cpp\
 ../../common/push/RhoPushManager.cpp\
 ../../api_generator/js_helpers.cpp\
 ../../api_generator/MethodResult.cpp\
-../../api_generator/StringifyHelper.cpp\
+../../api_generator/StringifyHelper.cpp
+
+HEADERS += ../../unzip/zip.h\
+../../unzip/unzip.h\
+../../unzip/gunzip.h\
+../../unzip/crc32.h\
+../../unzip/deflate.h\
+../../unzip/inffast.h\
+../../unzip/inffixed.h\
+../../unzip/inflate.h\
+../../unzip/gzguts.h\
+../../unzip/inftrees.h\
+../../unzip/trees.h\
+../../unzip/unzip.h\
+../../unzip/zconf.h\
+../../unzip/zip.h\
+../../unzip/zlib.h\
+../../unzip/zutil.h
+SOURCES += ../../unzip/unzip.cpp\
 ../../unzip/adler32.cpp\
 ../../unzip/crc32.cpp\
 ../../unzip/deflate.cpp\

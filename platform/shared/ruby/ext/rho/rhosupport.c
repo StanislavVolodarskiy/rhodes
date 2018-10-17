@@ -38,12 +38,17 @@
 
 #include "common/RhodesApp.h"
 #include "common/RhoMutexLock.h"
+#include "common/app_build_configs.h"
 #include "logging/RhoLog.h"
 
 #ifdef RHODES_EMULATOR
 #include "common/RhoSimConf.h"
 #endif
 #include "statistic/RhoProfiler.h"
+
+#include "eval_intern.h"
+#include "encindex.h"
+#include "rhoruby.h"
 
 #undef DEFAULT_LOGCATEGORY
 #define DEFAULT_LOGCATEGORY "RhoRuby"
@@ -58,8 +63,28 @@ extern /*RHO static*/ VALUE eval_string_with_cref(VALUE self, VALUE src, VALUE s
 static VALUE loadISeqFromFile(VALUE path);
 VALUE require_compiled(VALUE fname, VALUE* result, int bLoad);
 VALUE RhoPreparePath(VALUE path);
-VALUE rb_iseq_eval(VALUE iseqval);
+//VALUE rb_iseq_eval(VALUE iseqval);
 static void Init_RhoJSON();
+static const char * encodingIndexToString(int index);
+
+static const char * encodingIndexToString(int index){
+    switch (index) {
+        case ENCINDEX_ASCII: return "ASCII";
+        case ENCINDEX_UTF_8: return "UTF_8";
+        case ENCINDEX_US_ASCII: return "US_ASCII";
+        case ENCINDEX_UTF_16BE: return "UTF_16BE";
+        case ENCINDEX_UTF_16LE: return "UTF_16LE";
+        case ENCINDEX_UTF_32BE: return "UTF_32BE";
+        case ENCINDEX_UTF_32LE: return "UTF_32LE";
+        case ENCINDEX_UTF_16: return "UTF_16";
+        case ENCINDEX_UTF_32: return "UTF_32";
+        case ENCINDEX_UTF8_MAC: return "UTF8_MAC";
+        case ENCINDEX_EUC_JP: return "EUC_JP";
+        case ENCINDEX_Windows_31J: return "Windows_31J";
+        default: return "UNKNOWN";
+    }
+    return "STRANGE ERROR";
+}
 
 VALUE __rhoGetCurrentDir(void)
 {
@@ -107,6 +132,7 @@ rb_f_eval_compiled(int argc, VALUE *argv, VALUE self)
     //return eval_iseq_with_scope(self, scope, iseqval );
 }   
 
+
 static VALUE loadISeqFromFile(VALUE path)
 {
     VALUE seq;
@@ -117,6 +143,42 @@ static VALUE loadISeqFromFile(VALUE path)
 #endif    
 
         VALUE fiseq = rb_funcall(rb_cFile, rb_intern("binread"), 1, path);
+    
+    
+        // fiseq is string
+    //char* getStringFromValue(VALUE val);
+    //int getStringLenFromValue(VALUE val);
+    // VALUE rho_ruby_create_string_withlen2(const char* szVal, int len)
+
+    char* decrypted_buf = NULL;
+    
+    const char* filepath = getStringFromValue(path);
+    char* founded = strstr(filepath, ".encrypted");
+	VALUE arr;
+
+    
+    RAWLOG_INFO1("loadISeqFromFile: %s", filepath);
+    
+#ifndef RHO_RUBY_COMPILER
+   
+    if (founded) {
+        if (strcmp(founded, ".encrypted") == 0) {
+            const char* filedata = getStringFromValue(fiseq);
+            int filelen = getStringLenFromValue(fiseq);
+			int res;
+            
+            decrypted_buf = malloc (filelen*2);
+            
+            res = rho_decrypt_file(filedata, filelen, decrypted_buf, filelen*2);
+            
+            fiseq = rho_ruby_create_string_withlen2((const char*)decrypted_buf, res);
+            
+        }
+    }
+    
+#endif   
+    
+    
         //VALUE fiseq = rb_funcall(rb_cFile, rb_intern("open"), 2, path, rb_str_new2("rb"));
 #ifdef ENABLE_RUBY_VM_STAT
     gettimeofday (&start, NULL); 
@@ -124,7 +186,13 @@ static VALUE loadISeqFromFile(VALUE path)
 
 
 //        arr = Marshal.load(fiseq)
-        VALUE arr = rb_funcall(rb_const_get(rb_cObject,rb_intern("Marshal")), rb_intern("load"), 1, fiseq);
+        arr = rb_funcall(rb_const_get(rb_cObject,rb_intern("Marshal")), rb_intern("load"), 1, fiseq);
+    
+    
+    if (decrypted_buf != NULL) {
+        free(decrypted_buf);
+    }
+    
 #ifdef ENABLE_RUBY_VM_STAT
     gettimeofday (&end, NULL);
     
@@ -143,6 +211,7 @@ static VALUE loadISeqFromFile(VALUE path)
         //rb_funcall(fiseq, rb_intern("close"), 0 );
 //        seq = VM::InstructionSequence.load(arr)
         seq = rb_funcall(rb_cISeq, rb_intern("load"), 1, arr);
+
 #ifdef ENABLE_RUBY_VM_STAT
     gettimeofday (&end, NULL);
     
@@ -289,24 +358,50 @@ static VALUE check_extension(VALUE res, VALUE fname, int nAddExtName)
 static VALUE check_app_file_exist(VALUE dir, VALUE fname1, const char* szPlatform)
 {
     VALUE res = rb_str_dup(dir);
-    //RAWLOG_INFO1("find_file: check dir %s", RSTRING_PTR(dir));
+	VALUE result = 0;
+	int iter = 0;
+	char * resStr = 0;
+	char * fileName = RSTRING_PTR(dir);
+	int maxLenOfFileNamePart = 0;
+    RAWLOG_INFO1("find_file: check dir %s", RSTRING_PTR(dir));
 
     #ifdef __SYMBIAN32__
         if(*RSTRING_PTR(res) == '/')
             res = rb_str_substr(res,1,RSTRING_LEN(res) - 1);
     #endif
-
+	resStr = RSTRING_PTR(res);
     rb_str_cat(res,"/",1);
-    rb_str_cat(res,RSTRING_PTR(fname1),RSTRING_LEN(fname1));
+	resStr = RSTRING_PTR(res);
+#ifdef OS_UWP
+	fileName = RSTRING_PTR(fname1);
+	maxLenOfFileNamePart = RSTRING_LEN(fname1);
+	maxLenOfFileNamePart = RSTRING_LEN(res) < maxLenOfFileNamePart ? RSTRING_LEN(res) : maxLenOfFileNamePart;
+	while (((resStr[iter] == fileName[iter]) ||
+		(resStr[iter] == '\\' &&  fileName[iter] == '/')||
+		(resStr[iter] == '/'  &&  fileName[iter] == '\\')) && 
+		(iter < maxLenOfFileNamePart)) {
+		iter++;
+	}
+#endif // OS_UWP
+
+
+    rb_str_cat(res,(RSTRING_PTR(fname1)) + iter, (RSTRING_LEN(fname1)) - iter);
+	resStr = RSTRING_PTR(res);
     if (szPlatform)
     {
         rb_str_cat(res,".",1);
         rb_str_cat(res,szPlatform,strlen(szPlatform));
     }
-
+	resStr = RSTRING_PTR(res);
     rb_str_cat(res,RHO_RB_EXT,strlen(RHO_RB_EXT));
-    //RAWLOG_INFO1("find_file: check file: %s", RSTRING_PTR(res));
+	resStr = RSTRING_PTR(res);
+    RAWLOG_INFO1("find_file: check file: %s", RSTRING_PTR(res));
 
+    if (eaccess(RSTRING_PTR(res), R_OK) == 0) {
+        return res;
+    }
+    rb_str_cat(res,RHO_ENCRYPTED_EXT,strlen(RHO_ENCRYPTED_EXT));
+    
     return eaccess(RSTRING_PTR(res), R_OK) == 0 ? res : 0;
 }
 
@@ -323,6 +418,7 @@ static VALUE find_file_in_load_paths(VALUE fname)
 		for(; i < RARRAY_LEN(load_path); i++ )
 		{
 			VALUE dir = RARRAY_PTR(load_path)[i];
+			char* tmp = RSTRING_PTR(dir);
 
 #ifdef RHODES_EMULATOR
             res = check_app_file_exist(dir, fname1, rho_simconf_getString("platform"));
@@ -415,8 +511,8 @@ static VALUE find_file(VALUE fname)
 {
     VALUE res = 0;
     int nOK = 0;
-
-    //RAWLOG_INFO1("find_file: fname: %s", RSTRING_PTR(fname));
+	char * filename = RSTRING_PTR(fname);
+    RAWLOG_INFO1("find_file: fname: %s", filename);
 
 #ifdef RHODES_EMULATOR
     if ( strncmp(RSTRING_PTR(fname), rho_simconf_getRhodesPath(), strlen(rho_simconf_getRhodesPath())) == 0 )
@@ -424,7 +520,7 @@ static VALUE find_file(VALUE fname)
     else
 #endif
 
-#ifdef OS_WP8
+#if defined(OS_WP8) || defined(OS_UWP)
 	res = find_file_in_load_paths(fname);
 
 	if (res)
@@ -434,11 +530,11 @@ static VALUE find_file(VALUE fname)
     if ( strncmp(RSTRING_PTR(fname), rho_native_rhopath(), strlen(rho_native_rhopath())) == 0 ){
         res = rb_str_dup(fname);
         rb_str_cat(res,RHO_RB_EXT,strlen(RHO_RB_EXT));
-        //RAWLOG_INFO1("find_file: res: %s", RSTRING_PTR(res));
+        RAWLOG_INFO1("find_file: res: %s", RSTRING_PTR(res));
     } else if ( strncmp(RSTRING_PTR(fname), rho_native_reruntimepath(), strlen(rho_native_reruntimepath())) == 0 ){
         res = rb_str_dup(fname);
         rb_str_cat(res,RHO_RB_EXT,strlen(RHO_RB_EXT));
-        //RAWLOG_INFO1("find_file: res: %s", RSTRING_PTR(res));
+        RAWLOG_INFO1("find_file: res: %s", RSTRING_PTR(res));
     } else {
 		res = find_file_in_load_paths(fname);
 
@@ -448,8 +544,39 @@ static VALUE find_file(VALUE fname)
 		}
     }
 
-    //RAWLOG_INFO1("find_file: RhoPreparePath: %s", RSTRING_PTR(res));
-    res = RhoPreparePath(res);
+    if (res != 0) {
+        // check acess for possible encrypted
+        if (eaccess(RSTRING_PTR(res), R_OK) != 0) {
+            //check for .encrypted
+            VALUE tmp_res = rb_str_dup(res);
+            rb_str_cat(tmp_res,RHO_ENCRYPTED_EXT,strlen(RHO_ENCRYPTED_EXT));
+            if (eaccess(RSTRING_PTR(tmp_res), R_OK) == 0) {
+                res = rb_str_dup(tmp_res);
+            }
+            else {
+                //check for .rb
+                tmp_res = rb_str_dup(res);
+                rb_str_cat(tmp_res,RHO_RB_EXT,strlen(RHO_RB_EXT));
+                if (eaccess(RSTRING_PTR(tmp_res), R_OK) == 0) {
+                    res = rb_str_dup(tmp_res);
+                }
+                else {
+                    // check for .rb.encrypted
+                    rb_str_cat(tmp_res,RHO_ENCRYPTED_EXT,strlen(RHO_ENCRYPTED_EXT));
+                    if (eaccess(RSTRING_PTR(tmp_res), R_OK) == 0) {
+                        res = rb_str_dup(tmp_res);
+                    }
+                }
+            }
+        }
+
+    }
+
+    if ( res != 0 ) {
+        res = RhoPreparePath(res);
+        RAWLOG_INFO1("find_file: RhoPreparePath: %s", RSTRING_PTR(res));
+    }
+
     if ( !nOK )
         nOK = 1;//eaccess(RSTRING_PTR(res), R_OK) == 0 ? 1 : 0;
 
@@ -498,6 +625,8 @@ VALUE require_compiled(VALUE fname, VALUE* result, int bLoad)
     char* szName1 = 0;
 	char* la = 0;
     VALUE retval = Qtrue;
+    int state = 0;
+    rb_thread_t *th = GET_THREAD();
     
     if (TYPE(fname) != T_STRING)
         rb_raise(rb_eLoadError, "can not load non-string");
@@ -526,7 +655,7 @@ VALUE require_compiled(VALUE fname, VALUE* result, int bLoad)
     {
         VALUE seq;
 
-        RAWLOG_INFO1("require_compiled: %s", szName1);
+        RAWLOG_INFO2("require_compiled: %s, full path: %s", szName1, RSTRING_PTR(path));
 
         //optimize require
         //rb_ary_push(GET_VM()->loaded_features, path);
@@ -537,7 +666,19 @@ VALUE require_compiled(VALUE fname, VALUE* result, int bLoad)
             rb_str_cat(path,".rb",3);
 
         GET_VM()->src_encoding_index = rb_utf8_encindex();
-        rb_load(path, 0);
+
+        PUSH_TAG();
+        if ((state = EXEC_TAG()) == 0) {
+            rb_load(path, 0);
+        } else {
+            RAWLOG_ERROR2("Error loading %s: %d", RSTRING_PTR(path), state);
+        }
+        POP_TAG();
+
+        if ( state != 0 ) {
+            rb_raise( th->errinfo, RSTRING_PTR(rb_funcall(th->errinfo,rb_intern("to_s"),0)) );
+        }
+
 
         if( rho_simconf_getBool("reload_app_changes") )
         {
@@ -547,8 +688,10 @@ VALUE require_compiled(VALUE fname, VALUE* result, int bLoad)
 #else
         //rb_gc_disable();
         seq = loadISeqFromFile(path);
-        //*result = rb_funcall(seq, rb_intern("eval"), 0 );
-        *result = rb_iseq_eval(seq);
+
+        RAWLOG_INFO1("require_compiled: Loaded file encoded in %s", encodingIndexToString(rb_enc_get_index(seq)));
+        *result = rb_funcall(seq, rb_intern("eval"), 0 );
+        //*result = rb_iseq_eval(seq);
         
         //rb_gc_enable();
 #endif
@@ -578,16 +721,9 @@ translate_char(char *p, int from, int to)
 }
 
 VALUE RhoPreparePath(VALUE path){
-#ifdef __SYMBIAN32__
-
-	VALUE fname2 = rb_str_dup(path);
-	
-	translate_char(RSTRING_PTR(fname2),'/', '\\');
-	
+    //Looks like the path is frozen now at least on win32, so we dup it.
+	VALUE fname2 = rb_str_dup(path);	
 	return fname2;
-#endif //__SYMBIAN32__
-	
-	return path;
 }
 
 static void Init_RhoLog();
@@ -814,7 +950,7 @@ static void Init_RhoLog(){
     rb_gv_set("$stdout", appStdout);
     rb_gv_set("$stderr", appStdout);
 
-#if !defined( OS_WINDOWS_DESKTOP ) && !defined(OS_WINCE) && !defined(OS_WP8)
+#if !defined( OS_WINDOWS_DESKTOP ) && !defined(OS_WINCE) && !defined(OS_WP8) && !defined(OS_UWP)
     rb_RhoLogModule = rb_define_module("RhoLog");
     rb_define_module_function(rb_RhoLogModule, "info", rb_RhoLogInfo, 2);
     rb_define_module_function(rb_RhoLogModule, "error", rb_RhoLogError, 2);
@@ -841,8 +977,10 @@ static void Init_RhoJSON()
     rb_RhoModule = rb_define_module("Rho");
     rb_RhoJSON = rb_define_class_under(rb_RhoModule, "JSON", rb_cObject);
 
+#if !defined(RHO_NO_RUBY)
     rb_define_singleton_method(rb_RhoJSON, "parse", rho_json_parse, 1);
     rb_define_singleton_method(rb_RhoJSON, "quote_value", rho_json_quote_value, 1);
+#endif
 }
 
 static VALUE rb_RhoMessages;

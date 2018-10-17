@@ -27,6 +27,11 @@
 
 require 'pathname'
 require 'socket'
+require 'logger'
+
+require 'openssl'
+require 'base64'
+require 'stringio'
 
 
 SYNC_SERVER_BASE_URL = 'http://rhoconnect-spec-exact_platform.heroku.com'
@@ -58,8 +63,118 @@ class Hash
   end
 end
 
+
+
+module AES
+  class << self
+
+
+    def encrypt(plain_text, key_64)
+
+        alg = "AES-256-CBC"
+
+        key = Base64.decode64(key_64)
+
+        iv = OpenSSL::Cipher::Cipher.new(alg).random_iv
+        iv_64 = Base64.encode64(iv).chomp
+
+        aes = OpenSSL::Cipher::Cipher.new(alg)
+        aes.encrypt
+        aes.key = key
+        aes.iv = iv
+
+		sha1 = OpenSSL::Digest::SHA1.new
+		digest = sha1.digest(plain_text)
+
+        cipher = aes.update(plain_text)
+        cipher << aes.final
+
+        cipher_64 = Base64.encode64(cipher).chomp
+
+        #res = iv_64 + "$" + cipher_64
+        res = []
+        res << iv
+		res << digest
+        res << cipher
+        return res
+    end
+
+
+
+    def decrypt(data, key_64)
+
+                alg = "AES-256-CBC"
+
+                key = Base64.decode64(key_64)
+
+                istream = StringIO.new(data)
+
+                iv = istream.read(16)
+                digest = istream.read(20)
+                cipher = istream.read()
+
+                de_aes = OpenSSL::Cipher::Cipher.new(alg)
+                de_aes.decrypt
+                de_aes.key = key
+                de_aes.iv = iv
+
+                decrypted_text = de_aes.update(cipher)
+                decrypted_text << de_aes.final
+
+                return decrypted_text
+    end
+
+    def key
+
+        alg = "AES-256-CBC"
+
+        key = OpenSSL::Cipher::Cipher.new(alg).random_key
+        key_64 = Base64.encode64(key).chomp
+        return key_64
+    end
+  end
+
+end
+
+
+
+
 # Class with around building things
 class Jake
+
+  @@logger = nil
+
+  def self.set_logger(logger)
+    @@logger = logger
+  end
+
+  def self.log( severity, message )
+    if @@logger.nil?
+        init_logger
+    end
+    if @@logger
+      @@logger.log(severity, message)
+    else
+      puts message
+    end
+  end
+
+  def self.init_logger
+      if @@logger.nil?
+          @@logger = Logger.new(STDOUT)
+          $logger = @@logger
+          if ENV["RHODES_BUILD_LOGGER_LEVEL"] and ENV["RHODES_BUILD_LOGGER_LEVEL"] != ""
+              level = ENV["RHODES_BUILD_LOGGER_LEVEL"]
+              if level == "DEBUG"
+                  @@logger.level = Logger::DEBUG
+              end
+              if level == "INFO"
+                  @@logger.level = Logger::INFO
+              end
+          end
+      end
+  end
+
 
   def self.config(configfile)
     require 'yaml'
@@ -158,7 +273,7 @@ class Jake
     addr = localip                   #:BindAddress => addr,
     server = WEBrick::HTTPServer.new :Port => port
     port = server.config[:Port]
-    puts "LOCAL SERVER STARTED ON #{addr}:#{port}"
+    log Logger::INFO, "LOCAL SERVER STARTED ON #{addr}:#{port}"
     Thread.new { server.start }
     return server, addr, port
   end
@@ -183,16 +298,16 @@ class Jake
     begin
         platform = platform
         exact_url = SYNC_SERVER_BASE_URL.gsub(/exact_platform/, platform)
-        puts "going to reset server: #{exact_url}"
+        log Logger::INFO, "going to reset server: #{exact_url}"
         # login to the server
         unless @srv_token
 		  @srv_token = RestClient.post("#{exact_url}/rc/v1/system/login", { :login => SYNC_SERVER_CONSOLE_LOGIN, :password => SYNC_SERVER_CONSOLE_PASSWORD }.to_json, :content_type => :json)
         end
         # reset server
         RestClient.post("#{exact_url}/api/reset", {:api_token => @srv_token}.to_json, :content_type => :json)
-		puts "reset OK"
+		log Logger::INFO, "reset OK"
     rescue Exception => e
-      puts "reset_spec_server failed: #{e}"
+      log Logger::ERROR, "reset_spec_server failed: #{e}"
     end
   end
 
@@ -203,15 +318,15 @@ class Jake
 	begin
 		platform = platform
 		exact_url = BULK_SYNC_SERVER_URL
-		puts "going to reset server: #{exact_url}"
+		log Logger::INFO, "going to reset server: #{exact_url}"
 		# login to the server
 		unless @bulk_srv_token
 			@bulk_srv_token = RestClient.post("#{exact_url}/rc/v1/system/login", { :login => BULK_SYNC_SERVER_CONSOLE_LOGIN, :password => BULK_SYNC_SERVER_CONSOLE_PASSWORD }.to_json, :content_type => :json)
 		end
 		RestClient.post("#{exact_url}/api/reset", {:api_token => @bulk_srv_token}.to_json, :content_type => :json)
-		puts "reset OK"
+		log Logger::INFO, "reset OK"
     rescue Exception => e
-		puts "reset_bulk_server failed: #{e}"
+		log Logger::ERROR, "reset_bulk_server failed: #{e}"
 	end
   end
 
@@ -228,6 +343,13 @@ class Jake
     $total ||= 0
     $passed ||= 0
     $failed ||= 0
+    $notsupported ||= 0
+    $failed_lines ||= 0
+    $passed_lines ||= 0
+    $mspec_lines ||= 0
+    $jasmine_lines ||= 0
+    $total_lines_printed ||= 0
+    $latest_test_line = ""
     $faillog = []
     @default_file_name = "junit.xml"
     $junitname = ''
@@ -235,9 +357,17 @@ class Jake
     $getdump = false
   end
 
+  def self.print_statistic_in_progress
+      new_total = ($mspec_lines + $jasmine_lines) / 10
+      if new_total*10 > $total_lines_printed
+          $total_lines_printed = new_total*10
+          puts " "+$total_lines_printed.to_s+" tests / "+($passed_lines+$failed_lines).to_s+" checks prоcessed. Latest test is ["+$latest_test_line.to_s+"]"
+      end
+  end
+
   def self.process_spec_output(line)
       # Print MSpec example description
-      puts line if line =~ /\| - it/ or line =~ /\| describe/ or line =~ /\|   - /
+      log(Logger::INFO,line) if line =~ /\| - it/ or line =~ /\| describe/ or line =~ /\|   - /
       line = $1 if line =~ /^I\/APP\s+\(\s+[0-9]+\)\:\s+(.*)/
       if $getdump
         if line =~ /^I/
@@ -250,13 +380,13 @@ class Jake
       end
 
       if line =~ /JUNIT\| (.*)/          # JUNIT| XML
-        $junitlogs[@default_file_name] << $1
+        $junitlogs[@default_file_name] << $1 if $junitlogs[@default_file_name] != nil
       elsif line =~ /JUNITNAME\|\s+(.*)/          # JUNITNAME| name
         $junitname = File.basename($1.strip,'.xml')
-        $junitlogs[$junitname] = []
+        $junitlogs[$junitname] = [] if $junitlogs[$junitname] != nil
       elsif line =~ /JUNITBLOB\| (.*)/
         if $junitname && $1
-          $junitlogs[$junitname] << $1
+          $junitlogs[$junitname] << $1 if $junitlogs[$junitname] != nil
         end
       end
 
@@ -275,8 +405,32 @@ class Jake
         $passed += $1.to_i
       elsif line =~ /\| \*\*\*Failed:\s+(.*)/    # | ***Failed:
         $failed += $1.to_i
+      elsif line =~ /\| \*\*\*Not supported by Rhodes:\s+(.*)/    # | ***Failed:
+        $notsupported += $1.to_i
       elsif line =~ /\| \*\*\*Terminated\s+(.*)/ # | ***Terminated
         return false
+      end
+      #passed Jasmine
+      #Jasmine specRunner| <ORM Db Reset specs> : VT302-0054 | should delete all records only from selected models propertyBag databaseFullResetEx : Passed.
+      if line =~ /I.* Jasmine specRunner\| .*Passed\./
+        $passed_lines = $passed_lines +1
+      end
+
+      #Jasmine test lines
+      #Jasmine specRunner| <ORM Db Reset specs> : VT302-0054 | should delete all records only from selected models propertyBag databaseFullResetEx started
+      if line =~ /I.* Jasmine specRunner\| (.*) started/
+        $jasmine_lines = $jasmine_lines +1
+        $latest_test_line = $1.chomp
+      end
+
+      # tests for MSpec
+      if line =~ /\| MSPEC run spec: \[(.*)\]/
+        $mspec_lines = $mspec_lines +1
+        $latest_test_line = $1.chomp
+      end
+      # Passed for MSpec
+      if line =~ /\| PASSED:/
+        $passed_lines = $passed_lines +1
       end
       # Faillog for MSpec
       if line =~ /\| FAIL:/
@@ -284,6 +438,7 @@ class Jake
         if !$faillog.include?(line)
           $faillog << line
         end
+        $failed_lines = $failed_lines +1
         $getdump = true
       end
       # Faillog for Jusmine
@@ -292,8 +447,12 @@ class Jake
         if !$faillog.include?(line)
           $faillog << line
         end
+        $failed_lines = $failed_lines +1
         $getdump = true
       end
+
+      print_statistic_in_progress
+
       return true
   end
 
@@ -306,7 +465,7 @@ class Jake
     test_patterns = ['Test*.xml', '*_spec_results.xml']
     base_path = File.join($app_path,'**')
     Dir.glob( test_patterns.map{ |pat| File.join(base_path, pat) } ).each { |file_name| File.delete(file_name) }
-      
+
     FileUtils.rm_rf jpath
 
     FileUtils.mkdir_p jpath
@@ -320,21 +479,26 @@ class Jake
     FileUtils.rm_rf $app_path + "/faillog.txt"
 
     if $failed.to_i > 0
-      puts "************************"
-      puts "\n\n"
-      $faillog.each {|x| puts x }
+      log Logger::ERROR, "************************"
+      log Logger::ERROR, "\n\n"
+      $faillog.each {|x| log Logger::ERROR, x }
       File.open($app_path + "/faillog.txt", "w") { |io| $faillog.each {|x| io << x }  }
     end
 
-    puts "\n"
-    puts "************************"
-    puts "Tests completed in #{"%.1f" % (finish - start)} seconds"
-    puts "Total: #{$total}"
-    puts "Passed: #{$passed}"
-    puts "Failed: #{$failed}"
-    puts "Failures stored in faillog.txt" if $failed.to_i > 0
-    puts "************************"
-    puts "\n"
+    log(Logger::INFO, "\n")
+    log(Logger::INFO,"************************")
+    log(Logger::INFO,"Tests completed in #{"%.1f" % (finish - start)} seconds")
+    log(Logger::INFO,"Total: #{$total}")
+    log(Logger::INFO,"Passed: #{$passed}")
+    log(Logger::INFO,"Failed: #{$failed}")
+    log(Logger::INFO,"Not supported by Rhodes: #{$notsupported}")
+    log(Logger::INFO,"Failures stored in faillog.txt") if $failed.to_i > 0
+    log(Logger::INFO,"MSpec tests: #{$mspec_lines}")
+    log(Logger::INFO,"Jasmine tests: #{$jasmine_lines}")
+    log(Logger::INFO,"Passed checks: #{$passed_lines}")
+    log(Logger::INFO,"Failed checks: #{$failed_lines}")
+    log(Logger::INFO,"************************")
+    log(Logger::INFO,"\n")
   end
 
   def self.run2(command, args, options = {}, &block)
@@ -359,8 +523,8 @@ class Jake
 
     $stdout.flush
     unless options[:hide_output]
-      puts "PWD: #{Dir.pwd()}"
-      puts "CMD: #{cmdstr}"
+      log Logger::DEBUG,"PWD: #{Dir.pwd()}"
+      log Logger::DEBUG,"CMD: #{cmdstr}"
       $stdout.flush
     end
 
@@ -393,7 +557,7 @@ class Jake
             else
                 retval += line
 		unless options[:hide_output]
-                    puts "RET: #{line}"
+                    log Logger::DEBUG,"RET: #{line}"
                     $stdout.flush
 		end
             end
@@ -413,8 +577,9 @@ class Jake
     self.run2(command, args, {:directory => wd, :system => system, :hiderrors => hideerrors})
   end
 
-  def self.run3_dont_fail(command, cd = nil, env = {})
+  def self.run3_dont_fail(command, cd = nil, env = {}, use_run2 = false)
     set_list = []
+	currentdir = ""
     env.each_pair do |k, v|
       if RUBY_PLATFORM =~ /(win|w)32$/
         set_list << "set \"#{k}=#{v}\"&&"
@@ -432,7 +597,12 @@ class Jake
         cd_ = cd.gsub('/', "\\")
         to_run = "cd /d \"#{cd_}\"&&#{to_run}"
       else
-        to_run = "cd '#{cd}'&&#{to_run}"
+        if use_run2
+          currentdir = Dir.pwd()
+          Dir.chdir cd
+        else
+          to_run = "cd '#{cd}'&&#{to_run}"
+        end
       end
     end
 
@@ -440,21 +610,57 @@ class Jake
       to_print = "ENV: #{env}\n#{to_print}"
     end
 
-    puts
-    puts to_print
+    log Logger::DEBUG,to_print
     STDOUT.flush
 
-    system(to_run)
+    if use_run2
+        self.run2(to_run, []) do |line|
+            log Logger::DEBUG,line
+        end
+        if not cd.nil?
+          Dir.chdir currentdir
+        end
+        return $?.exitstatus == 0
+    else
+        res = system(to_run)
+        return res
+    end
   end
 
-  def self.run3(command, cd = nil, env = {})
-    fail "[#{command}]" unless self.run3_dont_fail(command, cd, env)
+  def self.run32(command, cd = nil, env = {})
+    fail "[#{command}]" unless self.run3_dont_fail(command, cd, env, true)
+  end
+
+
+  def self.run3(command, cd = nil, env = {}, use_run2 = false)
+    fail "[#{command}]" unless self.run3_dont_fail(command, cd, env, use_run2)
   end
 
   def self.run4(command)
       out = `#{command}`
       fail "[#{command}]" if $?.exitstatus != 0
       out
+  end
+
+  #will exec command and return stdout and stderr. options are to be extended for updated functionality
+  def self.run_with_output( command, options = {} )
+    require 'open3'
+    poutres = ''
+    perrres = ''
+    wtr = nil
+    Open3.popen3(command) do |pin,pout,perr,wait_thr|
+      while line = pout.gets
+        poutres << line
+      end
+
+      while line = perr.gets
+        perrres << line
+      end
+
+      wtr = wait_thr
+    end
+
+    return poutres, perrres, wtr
   end
 
   def self.edit_yml(file, out_file = nil)
@@ -517,7 +723,7 @@ class Jake
     args << src.to_s
 
     Dir.chdir targetdir
-    puts run(cmd,args)
+    log Logger::DEBUG,run(cmd,args)
     Dir.chdir currentdir
   end
 
@@ -561,7 +767,7 @@ class Jake
       args << files
     end
 
-    puts run(cmd,args)
+    log Logger::DEBUG,run(cmd,args)
 
 
   end
@@ -592,7 +798,7 @@ class Jake
 
       if cldc and icon
         f.write "MIDlet-1: " + title + "," + icon + ",\n"
-        puts "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! service_enabled: #{$service_enabled}"
+        log Logger::DEBUG,"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! service_enabled: #{$service_enabled}"
         $stdout.flush
 
           if $service_enabled
@@ -632,7 +838,7 @@ class Jake
 
     cmd.gsub!(/\//,"\\")
     outputstring = run(cmd, args)
-    puts outputstring unless $? == 0
+    log(Logger::DEBUG,outputstring) unless $? == 0
     Dir.chdir currentdir
 
   end
@@ -659,7 +865,7 @@ class Jake
 
     args << target
     #puts args.to_s
-    puts run("ant.bat",args,dir)
+    log Logger::INFO,run("ant.bat",args,dir)
   end
 
   def self.modify_file_if_content_changed(file_name, f)
@@ -668,16 +874,99 @@ class Jake
     old_content = File.exists?(file_name) ? File.read(file_name) : ""
 
     if old_content != content
-        puts "!!!MODIFY #{file_name}"
+        log Logger::DEBUG, "!!!MODIFY #{file_name}"
         File.open(file_name, "w"){|file| file.write(content)}
     end
 
     f.close
   end
 
+  def self.generate_AES_key
+      return AES.key
+  end
+
+  def self.encrypt_files_by_AES(dir, key, extensions_list)
+
+      puts "Jake.encrypt_files( dir:"+dir.to_s+", key:"+key.to_s+", ext_list:"+extensions_list.to_s+") BEGIN"
+      if extensions_list == nil
+          puts "extensions_list is NIL !"
+          return
+      end
+      if !(extensions_list.is_a?(Array))
+          puts "extensions_list is not Array !"+extensions_list.class.to_s
+          return
+      end
+
+      psize    = dir.size + 1
+
+      Dir.glob(File.join(dir, '**/*')).sort.each do |f|
+        relpath = f[psize..-1]
+
+        if File.directory?(f)
+          type = 'dir'
+        elsif File.file?(f)
+          type = 'file'
+        else
+          next
+        end
+
+        #check file
+        extension = File.extname(f).delete(".")
+        if !extensions_list.include?(extension)
+            next
+        end
+
+        #skip empty files
+        next unless File.size?(f)
+
+        next unless (File.basename(f) != "rhoconfig.txt")
+        next unless (File.basename(f) != "rhofilelist.txt")
+        next unless (File.basename(f) != "app_manifest.txt")
+
+        puts "    encrypt file: "+f.to_s+" ..."
+
+        #load file
+        content = File.binread(f)
+        #File.rename(f, f+".original")
+        File.delete(f)
+
+
+
+        #encrypt file
+        #encrypted_content = public_key.public_encrypt( content )
+        encrypted_content = AES.encrypt(content, key)
+
+
+        #decrypted_content = AES.decrypt(encrypted_content, key)
+        #File.open(f+".decrypted","wb") do |f|
+        #    f.write(decrypted_content)
+        #end
+
+        #save file
+        #output_f = File.new(f+".encrypted", "w")
+        #output_f.puts encrypted_content
+        #output_f.close
+
+        File.open(f+".encrypted","wb") do |f|
+            f.write(encrypted_content[0])
+            f.write(encrypted_content[1])
+			f.write(encrypted_content[2])
+        end
+
+
+        puts "        DONE"
+
+      end
+      puts "Jake.encrypt_files( dir:"+dir.to_s+", key:"+key.to_s+", ext_list:"+extensions_list.to_s+") END"
+
+  end
+
+
+
+
   def self.build_file_map(dir, file_name, in_memory = false)
     require 'digest/md5'
-    
+
     psize    = dir.size + 1
     file_map = Array.new
     file_map_name = File.join(dir, file_name)
@@ -700,8 +989,8 @@ class Jake
 
       if File.basename(f) == file_name
         next
-      end 
-      
+      end
+
       md5 = (type == 'file' ? (Digest::MD5.file(f)).to_s : '')
       size    = File.stat(f).size
       tm      = File.stat(f).mtime.to_i
@@ -786,10 +1075,10 @@ class Jake
         (Dir['RhoBundle/**/*']).each { |path|
           exclude_items = (Jake.getBuildProp2('rhobundle', 'exclude_items') || []).collect { |each| %r{#{each}} }
           begin
-            puts "Excluded: #{path}".warning
+            log Logger::INFO,"Excluded: #{path}".warning
             next
           end if (exclude_items.any? { |each| path.index(each) })
-          puts "added to zip : #{path}"
+          log Logger::INFO,"added to zip : #{path}"
           zip_file.add(path, path)
         }
       end
@@ -810,7 +1099,7 @@ class Jake
 
   def self.modify_rhoconfig_for_debug
     confpath_content = File.read($srcdir + "/apps/rhoconfig.txt") if File.exists?($srcdir + "/apps/rhoconfig.txt")
-    puts "confpath_content=" + confpath_content.to_s
+    log(Logger::INFO,"confpath_content=" + confpath_content.to_s)
 
     confpath_content += "\r\n" + "remotedebug=1"  if !confpath_content.include?("remotedebug=")
     confpath_content += "\r\n" + "debughosturl=" + $rhologhostaddr  if !confpath_content.include?("debughosturl=")
@@ -882,7 +1171,7 @@ class Jake
     version_path = File.join($startdir, 'version')
     version = ""
     File.open( version_path, 'rb' ){ |f| version = f.read() }
-    app_version += "\r\nrhodes_gem_version='#{version}'"
+    app_version += "\r\nrhodes_gem_version='#{version.strip}'"
 
     if $is_webkit_engine == true
 		  File.open(File.join($srcdir,'apps/rhoconfig.txt'), "a"){ |f| f.write("\r\nwebengine=webkit") }
@@ -1026,6 +1315,10 @@ class Jake
       FileUtils.rm dst_path if File.exists? dst_path
       FileUtils.cp src, dst
     end
+  end
+
+  def self.enquote str
+    "\"#{str}\""
   end
 
 end

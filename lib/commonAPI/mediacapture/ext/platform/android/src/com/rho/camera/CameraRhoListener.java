@@ -11,6 +11,8 @@ import java.sql.Date;
 import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TimerTask;
+import java.util.Timer;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -31,6 +33,11 @@ import android.os.Environment;
 import android.os.RemoteException;
 import android.provider.MediaStore;
 import android.provider.MediaStore.MediaColumns;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore.Images.Thumbnails;
+import android.content.ContentResolver;
+import android.os.Handler;
+
 import com.rhomobile.rhodes.Base64;
 import com.rhomobile.rhodes.Logger;
 import com.rhomobile.rhodes.RhodesActivity;
@@ -178,10 +185,10 @@ IRhoListener {
 		}
 		Uri captureUri = null;
 		String targetPath = " ";		
+		ByteArrayOutputStream stream = null;
 		Logger.T(TAG, "CameraRhoListener.onActivityResult() START");
 		Logger.T(TAG, "ActualProperties: ["+getActualPropertyMap()+"]");
-		Logger.T(TAG, "Properties: ["+propertyMap+"]");
-
+		boolean fromGallery = false;//(getActualPropertyMap().get("fromGallery") != null);
 		try {
 			if (resultCode == Activity.RESULT_OK)
 			{
@@ -261,13 +268,31 @@ IRhoListener {
 
 
 					if( outputToDataUri() ){
-						curUri = makeDataUri();						
+						stream = new ByteArrayOutputStream();
+						mBitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream);
+						byte[] byteArray = stream.toByteArray();
+						StringBuilder dataBuilder = new StringBuilder();
+						dataBuilder.append("data:image/jpeg;base64,");
+						try {
+							System.gc();
+							dataBuilder.append(Base64.encodeToString(byteArray, false));
+						} catch (Exception e) {
+							// TODO: handle exception
+							e.printStackTrace();
+						}
+						catch(OutOfMemoryError e){
+							stream = new ByteArrayOutputStream();
+							mBitmap.compress(Bitmap.CompressFormat.JPEG, 50, stream);
+							byteArray = stream.toByteArray();
+							dataBuilder.append(Base64.encodeToString(byteArray, false));
+						}
+						getActualPropertyMap().put("curUri", dataBuilder.toString());
+						curUri=Uri.parse(dataBuilder.toString());
 						mBitmap.recycle();
 					}
 					Logger.T(TAG, "Photo is captured: " + curUri);
 					//mBitmap.recycle();
-				}else if (captureUri != null )
-				{
+				}else if (captureUri != null ){
 					// not used system activity ?!
 					// unreacheable ?
 
@@ -277,7 +302,7 @@ IRhoListener {
 
 					if (getActualPropertyMap().get("dataURI") == null) {
 						Logger.T(TAG, "getActualPropertyMap().get(dataURI) == null");
-						boolean fromGallery = false;
+						
 						try {
 							imgPath = getFilePath(curUri);
 						}
@@ -298,10 +323,26 @@ IRhoListener {
 
 
 						if (fromGallery) {
-						}
-						else {
-							File f= new File(imgPath);
+							Logger.T(TAG, "Is from Gallery");
+							try{
+								if (imgPath == null){
+									imgPath = intent.getData().toString();
+									fixTheGalleryIssue(imgPath);
+								}
+							}catch(Exception e){}
+						} else {
+							Logger.T(TAG, "Not from Gallery");
+							Logger.T(TAG, "Path before copy: " + imgPath);
+							//File f = new File(imgPath);
+							File fileToDelete = new File(imgPath);
 							imgPath = copyImg(imgPath);
+							
+							if (!Boolean.parseBoolean(propertyMap.get("saveToDeviceGallery"))) {
+								deleteFile(fileToDelete);
+						    }
+							
+							File f= new File(imgPath);
+							Logger.T(TAG, "Path after copy: " + imgPath);
 							getActualPropertyMap().put("default_camera_key_path", "default_camera_key_path_value");
 							BitmapFactory.Options options = new BitmapFactory.Options();
 							options.inPreferredConfig = Bitmap.Config.ARGB_8888;
@@ -377,9 +418,7 @@ IRhoListener {
 					Logger.T(TAG, "targetPath["+targetPath+"]");
 				}
 
-				if (!outputToDataUri()) {
-					applyPostCaptureTransforms(options_only_size);
-				}
+                if (!outputToDataUri()) {applyPostCaptureTransforms(options_only_size);}
 
 				try{
 					DefaultCameraAsyncTask async = new DefaultCameraAsyncTask(mMethodResult, resultMap, intent, resultCode);
@@ -1023,6 +1062,83 @@ public void deleteImage(){
 	if(file.exists()){
 		file.delete();
 	}
+}
+
+private static void removeThumbnails(ContentResolver contentResolver, String photoId) {
+	Cursor thumbnails = contentResolver.query(Thumbnails.EXTERNAL_CONTENT_URI, null, Thumbnails.IMAGE_ID + "=?", null, null);
+	for (thumbnails.moveToFirst(); !thumbnails.isAfterLast(); thumbnails.moveToNext()) {
+	    long thumbnailId = thumbnails.getLong(thumbnails.getColumnIndex(Thumbnails._ID));
+	    String path = thumbnails.getString(thumbnails.getColumnIndex(Thumbnails.DATA));
+	    File file = new File(path);
+	    if (file.delete()) {
+	        contentResolver.delete(Thumbnails.EXTERNAL_CONTENT_URI, Thumbnails._ID + "=?", new String[]{String.valueOf(thumbnailId)});
+	    }
+
+	}
+}
+
+private void deleteRecursive(File fileOrDirectory) {
+    if (fileOrDirectory.isDirectory())
+        for (File child : fileOrDirectory.listFiles())
+            deleteRecursive(child);
+    fileOrDirectory.delete();
+}
+
+private void deleteFile(File fileToDelete){
+	//removeThumbnails(RhodesActivity.getContext().getContentResolver(), null);
+
+	final String strFileToDelete = fileToDelete.toString();
+	new Timer().schedule(new TimerTask() {          
+    @Override
+	    public void run() {
+			MediaScannerConnection.scanFile(RhodesActivity.getContext(), new String[]{strFileToDelete}, 
+            	null, new MediaScannerConnection.OnScanCompletedListener() {
+                public void onScanCompleted(String path, Uri uri) {
+                    Logger.T(TAG, "TimerTask: 5000 - ExternalStorage Scanned " + path + ":");
+                }
+            });
+	    }
+	}, 5000);
+
+	try{
+		if(fileToDelete.exists()){
+			fileToDelete.delete();
+			if(fileToDelete.exists()){
+				Logger.T(TAG, "fileToDelete.delete() failed.");
+			    fileToDelete.getCanonicalFile().delete();
+			    if(fileToDelete.exists()){
+			      	Logger.T(TAG, "fileToDelete.getCanonicalFile().delete(); failed.");
+			        RhodesActivity.getContext().deleteFile(fileToDelete.getName());
+	      		}
+			}
+		}
+		RhodesActivity.getContext().sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(fileToDelete)));
+		if(!fileToDelete.exists()){
+			Logger.T(TAG, fileToDelete.getName() + " is deleted.");
+			
+			if (Build.VERSION.SDK_INT >= 14) {
+	            MediaScannerConnection.scanFile(RhodesActivity.getContext(), new String[]{
+	            	strFileToDelete}, 
+	            	null, new MediaScannerConnection.OnScanCompletedListener() {
+	                public void onScanCompleted(String path, Uri uri) {
+	                    Logger.T(TAG, "ExternalStorage Scanned " + path + ":");
+	                    Logger.T(TAG, "ExternalStorage -> uri=" + uri);
+	                }
+	            });
+	        } else {
+	            RhodesActivity.getContext().sendBroadcast(new Intent(Intent.ACTION_MEDIA_MOUNTED, 
+				Uri.parse("file://" + new File(Environment.getExternalStorageDirectory(),"RhoImages"))));
+	        }
+
+		}else{
+			Logger.T(TAG, "All delete operations is failed.");
+		}
+		Logger.T(TAG, "deleteFile() function end");
+	}catch(Exception e){
+		e.printStackTrace();
+	}
+
+
 }
 
 }

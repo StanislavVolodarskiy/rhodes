@@ -31,12 +31,16 @@
 #endif
 #include "rhoruby.h"
 #include "vm_core.h"
+#include "transcode_data.h"
 
 #ifdef ENABLE_RUBY_VM_STAT
 #include "../stat/stat.h"
 #endif
 
+#ifndef RHO_RUBY_COMPILER
 #include "common/app_build_capabilities.h"
+#endif
+
 #include "logging/RhoLog.h"
 
 #ifdef RHODES_EMULATOR
@@ -46,6 +50,8 @@
 #include "sync/RhoconnectClientManager.h"
 
 
+#include "posixnames.h"
+
 int rho_is_remote_debug();
 
 #undef DEFAULT_LOGCATEGORY
@@ -54,7 +60,6 @@ extern void Init_strscan();
 extern void Init_sqlite3_api();
 extern void Init_GeoLocation(void);
 extern void print_profile_report();
-extern void enable_gc_profile(void);
 extern void Init_System(void);
 extern void Init_Phonebook(void);
 extern void Init_WebView(void);
@@ -76,6 +81,13 @@ extern void Init_RhoEvent(void);
 extern void Init_Calendar(void);
 extern void Init_Extensions(void);
 extern void init_rhoext_Signature();
+extern void Init_encdb(void);
+extern void ruby_init_prelude(void);
+extern void Init_transcode(void);
+extern void Init_IO(void);
+extern void Init_wait(void);
+extern void Init_nonblock(void);
+extern void Init_date_core(void);
 
 
 //RhoSupport extension
@@ -113,14 +125,6 @@ static int extensions_loaded = 0;
 extern void rb_w32_sysinit(int *argc, char ***argv);
 #endif
 
-/*rb_thread_t * __getCurrentThread()
-{
-    rb_thread_t * res = ruby_thread_from_native();
-    if ( res )
-        return res;
-
-    return ruby_current_thread;
-}*/
 /*
 void RhoRubyThreadStart()
 {
@@ -152,36 +156,35 @@ void RhoRubyThreadStop()
     //native_mutex_destroy(&th->interrupt_lock);
 } */
 
-extern int native_mutex_lock(rb_thread_lock_t *);
-extern int native_mutex_unlock(rb_thread_lock_t *);
-
-rb_thread_t * g_th_stored = 0;
-void rho_ruby_start_threadidle()
-{
-    g_th_stored = GET_THREAD();
-    rb_gc_save_machine_context(g_th_stored);
-    native_mutex_unlock(&g_th_stored->vm->global_vm_lock);
-}
-
-void rho_ruby_stop_threadidle()
-{
-    if ( g_th_stored )
-    {
-        native_mutex_lock(&g_th_stored->vm->global_vm_lock);
-        rb_thread_set_current(g_th_stored);
-        g_th_stored = 0;
-    }
-}
 
 #if !defined(OS_SYMBIAN) && (defined(RHO_SYMBIAN))// || defined (RHODES_EMULATOR))
 int   daylight;
 char *tzname[2];
 #endif
 
+void RhoModifyRubyLoadPath( const char* );
+
+#if defined(OS_MACOSX) || defined(OS_ANDROID)
+
+void Init_trans_utf_16_32();
+void Init_trans_single_byte();
+
+void Init_transcoders() {
+    //TRANS_INIT(utf_16_32);
+    //TRANS_INIT(single_byte);
+    Init_trans_utf_16_32();
+    Init_trans_single_byte();
+}
+#endif
+
+
 void RhoRubyStart()
 {
     const char* szRoot = rho_native_rhopath();
-    //VALUE moduleRhom;
+//RHO
+#if defined(_WIN32)
+    char* av[] = { "" };
+#endif
 #ifdef HAVE_LOCALE_H
     setlocale(LC_CTYPE, "");
 #endif
@@ -191,9 +194,21 @@ void RhoRubyStart()
 #endif
 
     RUBY_INIT_STACK;
+
+#if defined(_WIN32)
+    rb_w32_sysinit(0,av);
+#endif
+
     ruby_init();
-#if defined(WIN32)
-    rb_w32_sysinit(NULL,NULL);
+
+    Init_IO();
+    Init_wait();
+    Init_nonblock();
+
+    Init_encdb();
+#if defined(OS_MACOSX) || defined(OS_ANDROID)
+    Init_transcode();
+    Init_transcoders();
 #endif
 
 #if defined(DEBUG)
@@ -202,44 +217,13 @@ void RhoRubyStart()
     //rb_funcall(rb_mGC, rb_intern("stress="), 1, Qtrue);
 
     ruby_init_loadpath(szRoot);
-#if defined(RHODES_EMULATOR) || defined(APP_BUILD_CAPABILITY_SYMBOL) || defined(OS_WP8)
-    {
-        VALUE load_path = GET_VM()->load_path;
-        char* app_path = malloc(strlen(szRoot)+100);
 
-        rb_ary_clear(load_path);
+    RhoModifyRubyLoadPath( szRoot );
 
-        strcpy(app_path, szRoot);
-#if defined(RHODES_EMULATOR)
-        strcat(app_path, "app");
-#elif defined(OS_WP8)
-		strcat(app_path, "/apps/app");
-#else
-        strcat(app_path, "apps/app");
-#endif
-        rb_ary_push(load_path, rb_str_new2(app_path) );
+    ruby_init_prelude();
+    
 
-#if defined(APP_BUILD_CAPABILITY_SYMBOL)
-        strcpy(app_path, rho_native_reruntimepath());
-        strcat(app_path, "lib");
-#elif defined(OS_WP8)
-		strcpy(app_path, szRoot);
-        strcat(app_path, "/lib");
-#else
-        strcpy(app_path, rho_simconf_getRhodesPath());
-        strcat(app_path, "/lib/framework");
-#endif
-        rb_ary_push(load_path, rb_str_new2(app_path) );
-    }
-
-#endif
-
-//DO not use it! Keeps for backward compatibility with ruby extensions. Use Rho::System.isRhoSimulator
-#ifdef RHODES_EMULATOR
-    rb_const_set(rb_cObject, rb_intern("RHODES_EMULATOR"), Qtrue);
-#endif
-
-#if !defined(OS_WP8)
+#if !defined(OS_WP8) && !defined(OS_UWP)
 
     Init_strscan(); //+
     Init_GeoLocation(); //+
@@ -253,59 +237,29 @@ void RhoRubyStart()
     Init_RhoConf(); //+
 #endif
 
-//#if !defined(OS_WINDOWS_DESKTOP) || defined(RHODES_EMULATOR)
-//    Init_Alert();
-//#endif
-
-#if defined(WINDOWS_PLATFORM) && !defined(RHODES_EMULATOR) && !defined(RHODES_QT_PLATFORM)
-    //init_rhoext_Signature();
-#else
-    //Init_SignatureCapture();
-#endif
-    Init_RhoBluetooth();
 	Init_RhodesNativeViewManager();
 #if !defined(OS_MACOSX) && !defined(OS_ANDROID)
+    Init_RhoBluetooth();
     Init_Camera();
 #endif
     Init_stringio(); //+
     Init_DateTimePicker();
-//#if !defined(WINDOWS_PLATFORM) && !defined(RHODES_EMULATOR) && !defined(OS_ANDROID) && !defined(OS_MACOSX)
-//    Init_NativeBar();
-//#endif
+
     Init_RhoSupport(); //+
     Init_MapView();                         
     Init_RingtoneManager();
     Init_socket(); //+
-//#if !defined(WINDOWS_PLATFORM) && !defined(RHODES_EMULATOR) && !defined(OS_MACOSX)
-//    Init_NavBar();
-//#endif
     Init_RhoEvent();
     Init_Calendar();
-//#if !defined(OS_WINDOWS_DESKTOP) && !defined(RHODES_EMULATOR) && ! defined(OS_WINCE)
-//    Init_Alert();
-//#endif
         
-#if defined(OS_MACOSX)
-#ifndef RHO_DISABLE_OLD_CAMERA_SIGNATURE_API
-        //Init_Camera();
-//        Init_SignatureCapture();
-#endif
-#endif
-        
-//#if defined(OS_ANDROID)
-//#ifndef RHO_DISABLE_OLD_CAMERA_SIGNATURE_API
-//        Init_SignatureCapture();
-//#endif
-//#endif
-        
-//TODO: RhoSimulator  - load extensions dll dynamically
-#if !defined(RHO_SYMBIAN)
+    Init_date_core();
+
     Init_Extensions();
-#endif //RHO_SYMBIAN
 
 #else // OS_WP8 is set
 	Init_strscan();
-	Init_GeoLocation();
+	
+    Init_GeoLocation();
 	Init_NavBar();
 	Init_RhoSupport();
 	Init_RhoConf();
@@ -313,6 +267,8 @@ void RhoRubyStart()
 
 	Init_socket();
 	Init_stringio();
+        
+    Init_date_core();
 
 	Init_Extensions();
 #endif //OS_WP8
@@ -389,6 +345,80 @@ void RhoRubyStart()
 #endif
 
     }
+}
+
+
+
+void RhoModifyRubyLoadPath( const char* szRoot ) {
+#if defined(RHODES_EMULATOR) || defined(APP_BUILD_CAPABILITY_SYMBOL) || defined(OS_WP8) || defined(OS_UWP)
+        VALUE load_path = GET_VM()->load_path;
+
+        const int app_path_len = strlen(szRoot)+100;
+        char* app_path = malloc(app_path_len);
+
+        rb_ary_clear(load_path);
+
+        strcpy(app_path, szRoot);
+#if defined(RHODES_EMULATOR)
+        strcat(app_path, "app");
+#elif defined(OS_WP8) //|| defined(OS_UWP)
+        strcat(app_path, "/apps/app");
+#else
+        strcat(app_path, "apps/app");
+#endif
+
+        rb_ary_push(load_path, rb_str_new2(app_path) );
+
+#if defined(APP_BUILD_CAPABILITY_SYMBOL)
+        strcpy(app_path, rho_native_reruntimepath());
+        strcat(app_path, "lib");
+#elif defined(OS_WP8)
+        strcpy(app_path, szRoot);
+        strcat(app_path, "/lib");
+#elif defined(OS_UWP)
+		strcpy(app_path, szRoot);
+		strcat(app_path, "lib");
+#else
+        strcpy(app_path, rho_simconf_getRhodesPath());
+        strcat(app_path, "/lib/framework");
+#endif
+
+        rb_ary_push(load_path, rb_str_new2(app_path) );
+
+/*
+#ifdef RHODES_EMULATOR
+        const char*p0, *p1;
+
+        p0=p1=rho_simconf_getString( "ext_path" );
+
+        while ((*p0 != 0)) {
+
+            //find next token
+            for ( ; (*p1!=0 && *p1!=';'); ++p1 ) ;
+
+            int len = p1-p0;
+
+            if ( len > (app_path_len-1) ) {
+                RAWLOG_FATAL( "Buffer length for ext path is too short" );
+                return;
+            }
+
+            strncpy(app_path,p0,len);
+            app_path[len]=0;
+            rb_ary_push(load_path, rb_str_new2(app_path) );
+
+            ++p1;
+            p0=p1;
+        }
+
+
+        strcpy(app_path, rho_simconf_getRhodesPath());
+        strcat(app_path, "/lib/framework");
+        rb_ary_push(load_path, rb_str_new2(app_path) );
+
+#endif
+*/
+#endif
 }
 
 int  rho_ruby_is_started()
@@ -735,17 +765,20 @@ VALUE rho_ruby_create_array()
 
 VALUE rho_ruby_create_string(const char* szVal)
 {
-    return rb_str_new2(szVal);
+    return rb_utf8_str_new_cstr(szVal);
+    //return rb_str_new2(szVal);
 }
 
 VALUE rho_ruby_create_string_withlen(int len)
 {
-    return rb_str_new("", len);
+    return rb_utf8_str_new("", len);
+    //return rb_str_new("", len);
 }
 
 VALUE rho_ruby_create_string_withlen2(const char* szVal, int len)
 {
-    return rb_str_new(szVal, len);
+    return rb_utf8_str_new(szVal, len);
+    //return rb_str_new(szVal, len);
 }
 
 VALUE rho_ruby_create_time(long t)
@@ -913,7 +946,7 @@ rho_param *rho_param_fromvalue(VALUE v)
             for (i = 0; i < size; ++i) {
                 VALUE key = rb_ary_entry(keys, i);
                 VALUE value = rb_hash_aref(v, key);
-                p->v.hash->name[i] = strdup(RSTRING_PTR(rb_String(key)));
+                p->v.hash->name[i] = fpstrdup(RSTRING_PTR(rb_String(key)));
                 p->v.hash->value[i] = rho_param_fromvalue(value);
             }
             return p;
@@ -1027,10 +1060,10 @@ VALUE rho_ruby_main_thread()
 VALUE rho_ruby_current_thread()
 {
     if (!rho_ruby_is_started())
-        return 0;
+        return Qnil;
 
     if ( ruby_native_thread_p() != 1 )
-        return 0;
+        return Qnil;
 
     return rb_thread_current();
 }
@@ -1200,7 +1233,7 @@ int rho_ruby_is_string(VALUE val)
 
 int rho_ruby_is_integer(VALUE val)
 {
-    return (TYPE(val) == T_FIXNUM) ? 1 : 0;
+    return (TYPE(val) == T_FIXNUM) || (TYPE(val) == T_BIGNUM) ? 1 : 0;
 }
 
 int rho_ruby_is_boolean(VALUE val)

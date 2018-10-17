@@ -35,15 +35,18 @@
 
 @interface SplashViewController : RhoViewController {
     IBOutlet UIImageView *splashView;
-    
 @public
     UIView *parentView;
 }
 
 - (id)initWithParentView:(UIView*)v;
+- (id)initWithFrame:(CGRect)frame;
 - (void)hideSplash;
 - (void)bringToFront;
-+ (NSString*)detectLoadingImage:(CGRect)myframe rotation_to_left:(BOOL*)rotation_to_left;
+
++ (UIImage*)getLoadingImage;
 + (BOOL)hasLoadingImage;
+
++(BOOL)isReplaceContentWhenSnapshot;
 
 @end

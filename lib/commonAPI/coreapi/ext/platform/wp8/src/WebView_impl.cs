@@ -19,7 +19,7 @@ namespace WebViewImpl
 {
     public class WebView : WebViewBase
     {
-        public WebView()
+        public WebView(string id) : base(id)
         {
         }
     }
@@ -55,10 +55,34 @@ namespace WebViewImpl
                 mp.fullscreenCommand(fullScreen ? 1 : 0);
         }
 
+        public override void getKeyboardDisplayRequiresUserAction(IMethodResult oResult)
+        {
+            oResult.set(true);
+        }
+
+        public override void setKeyboardDisplayRequiresUserAction(bool keyboardDisplayRequiresUserAction, IMethodResult oResult)
+        {
+        }
+
+        public override void getEnableDragAndDrop(IMethodResult oResult)
+        {
+            oResult.set(true);
+        }
+
+        public override void setEnableDragAndDrop(bool enableDragAndDrop, IMethodResult oResult)
+        {
+        }
+
+
         public override void getEnableZoom(IMethodResult oResult)
         {
             // implement this method in C# here
             oResult.set(true);
+        }
+
+        public override void getEnableMediaPlaybackWithoutGesture(IMethodResult oResult)
+        {
+            oResult.set(false);
         }
 
         public override void getEnablePageLoadingIndication(IMethodResult oResult)

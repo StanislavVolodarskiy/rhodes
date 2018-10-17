@@ -41,9 +41,8 @@ typedef int SOCKET;
 #else
 #  if defined(OS_WINCE)
 #    include <winsock.h>
-#  elif defined(OS_WP8)
-#    //include "ruby/wp8/winsock_wp8.h"
-#      include <winsock2.h>
+#  else
+#    include <WinSock2.h>
 #  endif
 #  define RHO_NET_ERROR_CODE ::WSAGetLastError()
 #endif
@@ -148,6 +147,7 @@ public:
 #endif
   
 private:
+    CHttpServer(){}
     bool init();
     void close_listener();
     bool process(SOCKET sock);
@@ -169,6 +169,8 @@ private:
     
     callback_t registered(String const &uri);
     void call_ruby_proc( rho::String const &query, String const &body );
+
+    int select_internal( SOCKET listener, fd_set& readfds );
 
 private:
     bool m_active;
@@ -206,7 +208,9 @@ public:
     {
       method = ""; uri = ""; query = ""; headers.clear(); body = ""; signal = 0; mutex = 0;
     }
-    
+
+    const String& getResponse() const { return m_response; }
+
     String method;
     String uri;
     String query;
@@ -214,17 +218,16 @@ public:
     String body;
     pthread_cond_t* signal;
     pthread_mutex_t* mutex;
+    String m_response;
   };
   
   bool run();
   void doRequest( CDirectHttpRequest& req );
-  const String& getResponse() const { return m_response; }
 
 private:
   CHttpServer& m_server;
   common::CRhoThread& m_thread;
   CDirectHttpRequest* m_request;
-  String m_response;
 };
 #endif //OS_MACOSX
 void rho_http_ruby_proc_callback(void *arg, rho::String const &query );

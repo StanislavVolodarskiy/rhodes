@@ -20,12 +20,19 @@
 #include <common/RhoDefs.h>
 #ifndef RHO_NO_RUBY_API
 
-#if defined(_WIN32_WCE) || defined(WIN32) || defined(OS_WP8)
+#if defined(_WIN32_WCE) || defined(WIN32) || defined(OS_WP8) || defined(OS_UWP)
 //#define strdup _strdup
 //extern int _shttpd_strncasecmp(register const char *,register const char *, size_t);
 //#define strncasecmp _shttpd_strncasecmp
 # define strncasecmp _strnicmp
 #endif
+
+#ifdef POSIXNAME
+#define fpstrdup _strdup
+#else
+#define fpstrdup strdup
+#endif // POSIXNAME
+
 
 #ifdef _MSC_VER
 // warning C4018: '<' : signed/unsigned mismatch
@@ -505,7 +512,7 @@ struct json_object* rjson_tokener_parse_ex(struct json_tokener *tok,
 
     case json_tokener_state_object_field:
       if(c == tok->quote_char) {
-	obj_field_name = strdup(tok->pb->buf);
+	obj_field_name = fpstrdup(tok->pb->buf);
     saved_state = c == ':' ? json_tokener_state_object_value : json_tokener_state_object_field_end;
 	state = json_tokener_state_eatws;
       } else if(c == '\\') {

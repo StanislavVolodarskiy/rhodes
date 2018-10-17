@@ -2,7 +2,7 @@
 #include "INetworkDetect.h"
 #include <list>
 
-#if (defined OS_WINCE || defined OS_WP8)
+#if (defined OS_WINCE || defined OS_WP8 || defined(OS_UWP))
 #if (defined OS_WINCE)// && !defined(OS_PLATFORM_MOTCE)
 #include "../platform/wm/src/ConnectionManager.h"
 #endif
@@ -100,6 +100,8 @@ public:
 	virtual void stopDetectingConnection(rho::apiGenerator::CMethodResult& oResult);
     virtual void connectWan( const rho::String& connectionDestination, rho::apiGenerator::CMethodResult& oResult);
     virtual void disconnectWan(rho::apiGenerator::CMethodResult& oResult);
+    virtual void addCommandToQueue(rho::common::CInstanceClassFunctorBase<CMethodResult>* pFunctor);
+    common::CMutex addingToQueueMutex;
 #if (defined OS_WINCE)// && !defined(OS_PLATFORM_MOTCE)
     virtual bool onWndMsg(MSG& oMsg)
 	{
@@ -116,21 +118,66 @@ public:
 #endif
 private:
 
-    NetRequest& getCurRequest(NetRequest& oNetRequest, rho::apiGenerator::CMethodResult& oResult);
+    NetRequest& getCurRequest(NetRequest& oNetRequest, const rho::apiGenerator::CMethodResult& oResult) const;
     rho::String getEncodedBody(const rho::String& body, const rho::String& encoding);
 
-    void readHeaders( const rho::Hashtable<rho::String, rho::String>& propertyMap, Hashtable<String,String>& mapHeaders );
-    void createResult( NetResponse& resp, Hashtable<String,String>& mapHeaders, rho::apiGenerator::CMethodResult& oResult );
+    void readHeaders( const rho::Hashtable<rho::String, rho::String>& propertyMap, Hashtable<String,String>& mapHeaders ) const;
+    void createResult( const NetResponse& resp, const Hashtable<String,String>& mapHeaders, rho::apiGenerator::CMethodResult& oResult ) const;
 	//  RE1 Network API
 //	std::list<INetworkDetection*> m_networkPollers;
     INetworkDetection* m_networkPoller;
 #if (defined OS_WINCE)// && !defined(OS_PLATFORM_MOTCE)
 	CWAN *m_pConnectionManager;
 #endif
-    void setupSecureConnection( const rho::Hashtable<rho::String, rho::String>& propertyMap, NetRequest& oNetRequest, rho::apiGenerator::CMethodResult& oResult );
+    void setupSecureConnection( 
+        const rho::Hashtable<rho::String, rho::String>& propertyMap, 
+        NetRequest& oNetRequest, 
+        const rho::apiGenerator::CMethodResult& oResult ) const;
+
+    rho::net::CNetRequestWrapper prepareRequest ( 
+        const rho::Hashtable<rho::String, rho::String>& propertyMap, 
+        NetRequest& oNetRequest, 
+        const rho::apiGenerator::CMethodResult& oResult,
+        /*out*/ Hashtable<String,String>& mapHeaders ) const
+    {
+        readHeaders( propertyMap, mapHeaders );
+
+        setupSecureConnection( propertyMap, oNetRequest, oResult );
+
+        rho::net::CNetRequestWrapper reqWrapper = getNetRequest(&getCurRequest(oNetRequest, oResult));
+
+        if ( propertyMap.get("authType") == AUTH_BASIC ) {
+            LOG(TRACE)+"Setting HTTP auth type to BASIC";
+
+            reqWrapper.setAuthMethod( rho::net::AUTH_BASIC );
+            reqWrapper.setAuthUser( propertyMap.get("authUser") );
+            reqWrapper.setAuthPassword( propertyMap.get("authPassword") );
+        } else if ( propertyMap.get("authType") == AUTH_DIGEST ) {
+            LOG(TRACE)+"Setting HTTP auth type to DIGEST";
+
+            reqWrapper.setAuthMethod( rho::net::AUTH_DIGEST );
+            reqWrapper.setAuthUser( propertyMap.get("authUser") );
+            reqWrapper.setAuthPassword( propertyMap.get("authPassword") );
+        } else {
+            LOG(TRACE)+"Setting HTTP auth type to NONE";
+            reqWrapper.setAuthMethod( rho::net::AUTH_NONE );
+        }
+
+        return reqWrapper;
+    }
+
+    void prepareResult( 
+        const NetResponse& resp, 
+        NetRequest& oNetRequest,
+        const Hashtable<String,String>& mapHeaders,
+        rho::apiGenerator::CMethodResult& oResult ) const
+    {
+        if ( !getCurRequest(oNetRequest, oResult).isCancelled())
+            createResult( resp, mapHeaders, oResult );
+    }
 };
 
-NetRequest& CNetworkImpl::getCurRequest(NetRequest& oNetRequest, rho::apiGenerator::CMethodResult& oResult)
+NetRequest& CNetworkImpl::getCurRequest(NetRequest& oNetRequest, const rho::apiGenerator::CMethodResult& oResult) const
 {
     if (!getCommandQueue() || !oResult.hasCallback() )
         return oNetRequest;
@@ -173,7 +220,7 @@ void CNetworkImpl::cancel( rho::apiGenerator::CMethodResult& oResult)
     synchronized(getCommandQueue()->getCommandLock());
     CHttpCommand* pCmd = (CHttpCommand*)getCommandQueue()->getCurCommand();
 
-    if ( pCmd != null && ( !oResult.hasCallback() || pCmd->isEqualCallback(oResult) ) )
+    if ( pCmd != NULL && ( !oResult.hasCallback() || pCmd->isEqualCallback(oResult) ) )
         pCmd->cancel();
 
     if ( !oResult.hasCallback() )
@@ -184,7 +231,7 @@ void CNetworkImpl::cancel( rho::apiGenerator::CMethodResult& oResult)
         {
             CHttpCommand* pCmd1 = (CHttpCommand*)getCommandQueue()->getCommands().get(i);
 
-            if ( pCmd1 != null && pCmd1->isEqualCallback(oResult) )
+            if ( pCmd1 != NULL && pCmd1->isEqualCallback(oResult) )
                 getCommandQueue()->getCommands().remove(i);
         }
 
@@ -194,39 +241,31 @@ void CNetworkImpl::cancel( rho::apiGenerator::CMethodResult& oResult)
 void CNetworkImpl::get( const rho::Hashtable<rho::String, rho::String>& propertyMap, rho::apiGenerator::CMethodResult& oResult)
 {
     Hashtable<String,String> mapHeaders;                                          
-    readHeaders( propertyMap, mapHeaders );
-
     NetRequest oNetRequest;
-    
-    setupSecureConnection( propertyMap, oNetRequest, oResult );
+    rho::net::CNetRequestWrapper reqWrapper = prepareRequest( propertyMap, oNetRequest, oResult, mapHeaders );
     
     String body = propertyMap.get("body");
     if ( propertyMap.containsKey("contentEncoding") ) {
         body = getEncodedBody(body,propertyMap.get("contentEncoding"));
     }
     
-    NetResponse resp = getNetRequest(&getCurRequest(oNetRequest, oResult)).doRequest( getStringProp(propertyMap, "httpVerb", "GET").c_str(),
-            propertyMap.get("url"), body, null, &mapHeaders);
+    NetResponse resp = reqWrapper.doRequest( getStringProp(propertyMap, "httpVerb", "GET").c_str(),
+            propertyMap.get("url"), body, NULL, &mapHeaders);
 
-    if ( !getCurRequest(oNetRequest, oResult).isCancelled())
-        createResult( resp, mapHeaders, oResult );
+    prepareResult( resp, oNetRequest, mapHeaders, oResult );
 }
 
 void CNetworkImpl::downloadFile( const rho::Hashtable<rho::String, rho::String>& propertyMap, rho::apiGenerator::CMethodResult& oResult)
 {
     Hashtable<String,String> mapHeaders;                                          
-    readHeaders( propertyMap, mapHeaders );
-
     NetRequest oNetRequest;
+    rho::net::CNetRequestWrapper reqWrapper = prepareRequest( propertyMap, oNetRequest, oResult, mapHeaders );
     
     bool overwriteFile = propertyMap.containsKey("overwriteFile") && (propertyMap.get("overwriteFile")=="true");
     bool createFolders = propertyMap.containsKey("createFolders") && (propertyMap.get("createFolders")=="true");
-
-    setupSecureConnection( propertyMap, oNetRequest, oResult );
-    
     bool fileExists = false;
 
-    NetResponse resp = getNetRequest(&getCurRequest(oNetRequest, oResult)).pullFile( propertyMap.get("url"), propertyMap.get("filename"), null, &mapHeaders,overwriteFile,createFolders,&fileExists);
+    NetResponse resp = reqWrapper.pullFile( propertyMap.get("url"), propertyMap.get("filename"), NULL, &mapHeaders,overwriteFile,createFolders,&fileExists);
 
     if ( !getCurRequest(oNetRequest, oResult).isCancelled()) {
         if (fileExists) {
@@ -241,35 +280,36 @@ void CNetworkImpl::downloadFile( const rho::Hashtable<rho::String, rho::String>&
     }
 }
 
+void CNetworkImpl::addCommandToQueue(
+        rho::common::CInstanceClassFunctorBase<CMethodResult>* pFunctor){
+        synchronized(addingToQueueMutex);
+        CModuleSingletonBase<INetworkSingleton>::addCommandToQueue(pFunctor);
+}
+
+
+
 void CNetworkImpl::post( const rho::Hashtable<rho::String, rho::String>& propertyMap, rho::apiGenerator::CMethodResult& oResult)
 {
     Hashtable<String,String> mapHeaders;                                          
-    readHeaders( propertyMap, mapHeaders );
-
     NetRequest oNetRequest;
+    rho::net::CNetRequestWrapper reqWrapper = prepareRequest( propertyMap, oNetRequest, oResult, mapHeaders );
 
-    setupSecureConnection( propertyMap, oNetRequest, oResult );
-    
     String body = propertyMap.get("body");
     if ( propertyMap.containsKey("contentEncoding") ) {
         body = getEncodedBody(body,propertyMap.get("contentEncoding"));
     }
-    
-    NetResponse resp = getNetRequest(&getCurRequest(oNetRequest, oResult)).doRequest( getStringProp(propertyMap, "httpVerb", "POST").c_str(),
-            propertyMap.get("url"), body, null, &mapHeaders);
 
-    if ( !getCurRequest(oNetRequest, oResult).isCancelled())
-        createResult( resp, mapHeaders, oResult );
+    NetResponse resp = reqWrapper.doRequest( getStringProp(propertyMap, "httpVerb", "POST").c_str(),
+        propertyMap.get("url"), body, NULL, &mapHeaders);
+
+    prepareResult( resp, oNetRequest, mapHeaders, oResult );
 }
 
 void CNetworkImpl::uploadFile( const rho::Hashtable<rho::String, rho::String>& propertyMap, rho::apiGenerator::CMethodResult& oResult)
 {
     Hashtable<String,String> mapHeaders;                                          
-    readHeaders( propertyMap, mapHeaders );
-
     NetRequest oNetRequest;
-
-    setupSecureConnection( propertyMap, oNetRequest, oResult );
+    rho::net::CNetRequestWrapper reqWrapper = prepareRequest( propertyMap, oNetRequest, oResult, mapHeaders );
 
     VectorPtr<net::CMultipartItem*> arMultipartItems;
     if ( propertyMap.containsKey("multipart") )
@@ -315,13 +355,12 @@ void CNetworkImpl::uploadFile( const rho::Hashtable<rho::String, rho::String>& p
         }
     }
 
-    NetResponse resp = getNetRequest(&getCurRequest(oNetRequest, oResult)).pushMultipartData( propertyMap.get("url"), arMultipartItems, null, &mapHeaders );
+    NetResponse resp = reqWrapper.pushMultipartData( propertyMap.get("url"), arMultipartItems, NULL, &mapHeaders );
 
-    if ( !getCurRequest(oNetRequest, oResult).isCancelled())
-        createResult( resp, mapHeaders, oResult );
+    prepareResult( resp, oNetRequest, mapHeaders, oResult );    
 }
 
-void CNetworkImpl::readHeaders( const rho::Hashtable<rho::String, rho::String>& propertyMap, Hashtable<String,String>& mapHeaders )
+void CNetworkImpl::readHeaders( const rho::Hashtable<rho::String, rho::String>& propertyMap, Hashtable<String,String>& mapHeaders ) const
 {
     if ( propertyMap.get("headers").length() > 0 )
     {
@@ -369,7 +408,7 @@ rho::String CNetworkImpl::getEncodedBody(const rho::String& body, const rho::Str
 }
 
 
-void CNetworkImpl::createResult( NetResponse& resp, Hashtable<String,String>& mapHeaders, rho::apiGenerator::CMethodResult& oResult )
+void CNetworkImpl::createResult( const NetResponse& resp, const Hashtable<String,String>& mapHeaders, rho::apiGenerator::CMethodResult& oResult ) const
 {
 /*
     String strJSON = "{";
@@ -652,7 +691,7 @@ void CNetworkImpl::stopDetectingConnection(rho::apiGenerator::CMethodResult& oRe
         {
             m_networkPoller->StopNetworkChecking();
         }
-        //Check again existence of m_networkPoller before calling CleanupAndDeleteSelf,as in some conditions it becomes null by other threads
+        //Check again existence of m_networkPoller before calling CleanupAndDeleteSelf,as in some conditions it becomes NULL by other threads
         if(m_networkPoller!=0)
 	{
 	LOG(INFO)+"CleanupAndDeleteSelf";	
@@ -694,7 +733,10 @@ void CNetworkImpl::disconnectWan(rho::apiGenerator::CMethodResult& oResult)
 #endif
 }
     
-void CNetworkImpl::setupSecureConnection( const rho::Hashtable<rho::String, rho::String>& propertyMap, NetRequest& oNetRequest, rho::apiGenerator::CMethodResult& oResult )
+void CNetworkImpl::setupSecureConnection( 
+    const rho::Hashtable<rho::String, rho::String>& propertyMap, 
+    NetRequest& oNetRequest, 
+    const rho::apiGenerator::CMethodResult& oResult ) const
 {
     String clientCertificate = "";
     String clientCertificatePassword = "";
@@ -719,6 +761,27 @@ void CNetworkImpl::setupSecureConnection( const rho::Hashtable<rho::String, rho:
     
     RHOCONF().setString("clientSSLCertificate",clientCertificate,false);
     RHOCONF().setString("clientSSLCertificatePassword",clientCertificatePassword,false);
+/*
+    NetRequest& currentRequest = getCurRequest(oNetRequest, oResult);
+
+    if ( propertyMap.get("authType") == AUTH_BASIC ) {
+        LOG(TRACE)+"Setting HTTP auth type to BASIC";
+
+        currentRequest.setAuthMethod( rho::net::AUTH_BASIC );
+        currentRequest.setAuthUser( propertyMap.get("authUser") );
+        currentRequest.setAuthPassword( propertyMap.get("authPassword") );
+    } else if ( propertyMap.get("authType") == AUTH_DIGEST ) {
+        LOG(TRACE)+"Setting HTTP auth type to DIGEST";
+
+        currentRequest.setAuthMethod( rho::net::AUTH_DIGEST );
+        currentRequest.setAuthUser( propertyMap.get("authUser") );
+        currentRequest.setAuthPassword( propertyMap.get("authPassword") );
+    } else {
+        LOG(TRACE)+"Setting HTTP auth type to NONE";
+
+        currentRequest.setAuthMethod( rho::net::AUTH_NONE );
+    }
+*/
 }
     
 

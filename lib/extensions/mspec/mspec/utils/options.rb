@@ -1,5 +1,7 @@
 require 'mspec/version'
 
+MSPEC_HOME = File.expand_path('../../../..', __FILE__)
+
 class MSpecOption
   attr_reader :short, :long, :arg, :description, :block
 
@@ -81,7 +83,7 @@ class MSpecOptions
   # instance to the list of registered options.
   def add(short, long, arg, description, block)
     s = short ? short.dup : "  "
-    s << (short ? ", " : "  ") if long
+    s += (short ? ", " : "  ") if long
     doc "   #{s}#{long} #{arg}".ljust(@width-1) + " #{description}"
     @options << MSpecOption.new(short, long, arg, description, block)
   end
@@ -143,14 +145,14 @@ class MSpecOptions
 
       # process first option
       option = process argv, entry, opt, arg
-      next unless option and not option.arg?
+      next unless option and !option.arg?
 
       # process the rest of the options
       while rest.size > 0
         opt, arg, rest = split rest, 1
         opt = "-" + opt
         option = process argv, opt, opt, arg
-        break if option.arg?
+        break if !option or option.arg?
       end
     end
 
@@ -211,12 +213,8 @@ class MSpecOptions
       case t
       when 'r', 'ruby'
         config[:target] = 'ruby'
-      when 'r19', 'ruby19'
-        config[:target] = 'ruby1.9'
       when 'x', 'rubinius'
         config[:target] = './bin/rbx'
-      when 'x19', 'rubinius19'
-        config[:target] = './bin/rbx -X19'
       when 'X', 'rbx'
         config[:target] = 'rbx'
       when 'j', 'jruby'
@@ -225,20 +223,26 @@ class MSpecOptions
         config[:target] = 'ir'
       when 'm','maglev'
         config[:target] = 'maglev-ruby'
+      when 't','topaz'
+        config[:target] = 'topaz'
+      when 'o','opal'
+        mspec_lib = File.expand_path('../../../', __FILE__)
+        config[:target] = "./bin/opal -syaml -sfileutils -rnodejs -rnodejs/require -rnodejs/yaml -rprocess -Derror -I#{mspec_lib} -I./lib/ -I. "
       else
         config[:target] = t
       end
     end
 
     doc ""
-    doc "     r or ruby        invokes ruby in PATH"
-    doc "     r19, ruby19      invokes ruby1.9 in PATH"
-    doc "     x or rubinius    invokes ./bin/rbx"
-    doc "     X or rbx         invokes rbx in PATH"
-    doc "     j or jruby       invokes jruby in PATH"
-    doc "     i or ironruby    invokes ir in PATH"
-    doc "     m or maglev      invokes maglev-ruby in PATH"
-    doc "     full path to EXE invokes EXE directly\n"
+    doc "     r or ruby         invokes ruby in PATH"
+    doc "     x or rubinius     invokes ./bin/rbx"
+    doc "     X or rbx          invokes rbx in PATH"
+    doc "     j or jruby        invokes jruby in PATH"
+    doc "     i or ironruby     invokes ir in PATH"
+    doc "     m or maglev       invokes maglev-ruby in PATH"
+    doc "     t or topaz        invokes topaz in PATH"
+    doc "     o or opal         invokes ./bin/opal with options"
+    doc "     full path to EXE  invokes EXE directly\n"
 
     on("-T", "--target-opt", "OPT",
        "Pass OPT as a flag to the target implementation") do |t|
@@ -246,7 +250,7 @@ class MSpecOptions
     end
     on("-I", "--include", "DIR",
        "Pass DIR through as the -I option to the target") do |d|
-      config[:includes] << "-I#{d}"
+      config[:loadpath] << "-I#{d}"
     end
     on("-r", "--require", "LIBRARY",
        "Pass LIBRARY through as the -r option to the target") do |f|
@@ -257,6 +261,7 @@ class MSpecOptions
   def formatters
     on("-f", "--format", "FORMAT",
        "Formatter for reporting, where FORMAT is one of:") do |o|
+      require 'mspec/runner/formatters'
       case o
       when 's', 'spec', 'specdoc'
         config[:formatter] = SpecdocFormatter
@@ -280,10 +285,16 @@ class MSpecOptions
         config[:formatter] = YamlFormatter
       when 'p', 'profile'
         config[:formatter] = ProfileFormatter
+      when 'j', 'junit'
+        config[:formatter] = JUnitFormatter
       else
-        puts "Unknown format: #{o}"
-        puts @parser
-        exit
+        abort "Unknown format: #{o}\n#{@parser}" unless File.exist?(o)
+        require File.expand_path(o)
+        if Object.const_defined?(:CUSTOM_MSPEC_FORMATTER)
+          config[:formatter] = CUSTOM_MSPEC_FORMATTER
+        else
+          abort "You must define CUSTOM_MSPEC_FORMATTER in your custom formatter file"
+        end
       end
     end
 
@@ -296,7 +307,9 @@ class MSpecOptions
     doc "       m, summary               SummaryFormatter"
     doc "       a, *, spin               SpinnerFormatter"
     doc "       t, method                MethodFormatter"
-    doc "       y, yaml                  YamlFormatter\n"
+    doc "       y, yaml                  YamlFormatter"
+    doc "       p, profile               ProfileFormatter"
+    doc "       j, junit                 JUnitFormatter\n"
 
     on("-o", "--output", "FILE",
        "Write formatter output to FILE") do |f|
@@ -359,13 +372,6 @@ class MSpecOptions
     end
   end
 
-  def background
-    on("--background",
-       "Enable guard for specs that may hang in background processes") do
-      MSpec.register_mode :background
-    end
-  end
-
   def unguarded
     on("--unguarded", "Turn off all guards") do
       MSpec.register_mode :unguarded
@@ -379,6 +385,13 @@ class MSpecOptions
     on("-H", "--random",
        "Randomize the list of spec files") do
       MSpec.randomize
+    end
+  end
+
+  def repeat
+    on("-R", "--repeat", "NUMBER",
+       "Repeatedly run an example NUMBER times") do |o|
+      MSpec.repeat = o.to_i
     end
   end
 
@@ -443,10 +456,6 @@ class MSpecOptions
        "Invoke the debugger when a spec description matches (see -K, -S)") do
       config[:debugger] = true
     end
-    on("--spec-gdb",
-       "Invoke Gdb when a spec description matches (see -K, -S)") do
-      config[:gdb] = true
-    end
   end
 
   def debug
@@ -454,5 +463,27 @@ class MSpecOptions
        "Set MSpec debugging flag for more verbose output") do
       $MSPEC_DEBUG = true
     end
+  end
+
+  def all
+    # Generated with:
+    # puts File.read(__FILE__).scan(/def (\w+).*\n\s*on\(/)
+    configure {}
+    name
+    targets
+    formatters
+    filters
+    chdir
+    prefix
+    pretend
+    unguarded
+    randomize
+    repeat
+    verbose
+    interrupt
+    verify
+    action_filters
+    actions
+    debug
   end
 end

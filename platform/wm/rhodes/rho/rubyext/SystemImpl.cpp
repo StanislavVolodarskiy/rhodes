@@ -29,14 +29,23 @@
 #if defined(RHODES_QT_PLATFORM)
 
 #include <windows.h>
+
+#ifdef OS_WINDOWS_DESKTOP
+#include <Shellapi.h>
+#endif //OS_WINDOWS_DESKTOP
+
 #include "common/RhoDefs.h"
 #include "common/RhoStd.h"
 #undef null
 #include <qglobal.h>
-#if QT_VERSION >= 0x050000
+#ifndef OS_SAILFISH
+#if QT_VERSION > QT_VERSION_CHECK(5,7,0)
+#include <QtWebEngine/qtwebengineversion.h>
+#elif  QT_VERSION >= QT_VERSION_CHECK(5,0,0)
 #include <QtWebKit/qtwebkitversion.h>
 #else
 #include <QtWebKit/qwebkitversion.h>
+#endif
 #endif
 #include "../../qt/rhodes/impl/MainWindowImpl.h"
 
@@ -72,11 +81,11 @@ const char* rho_sys_qt_getWebviewFramework();
 
 bool rho_rhosim_window_closed()
 {
-#ifdef RHODES_EMULATOR
+/*#ifdef RHODES_EMULATOR
     return CMainWindow::mainWindowClosed;
-#else
+#else*/
     return false;
-#endif
+//#endif
 }
 
 void rho_wmsys_run_app_with_show(const wchar_t* szPath, const wchar_t* szParams, bool bShow )

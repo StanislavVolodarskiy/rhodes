@@ -33,6 +33,10 @@
 
 #include <algorithm>
 
+#if defined(OS_UWP) || defined(_UWP_LIB)
+#include <iterator>
+#include <string>
+#endif
 #undef DEFAULT_LOGCATEGORY
 #define DEFAULT_LOGCATEGORY "Net"
 
@@ -63,27 +67,27 @@ public:
         m_data.assign(data, size);
     }
 
-    virtual const char* getCharData()
+    virtual const char* getCharData() const
     {
         return m_data.c_str();
     }
 
-    virtual unsigned int getDataSize()
+    virtual unsigned int getDataSize() const
     {
         return m_data.size();
     }
 
-    virtual int getRespCode() 
+    virtual int getRespCode() const
     {
         return m_nRespCode;
     }
 
-    virtual String getCookies()
+    virtual String getCookies() const
     {
         return m_cookies;
     }
     
-    virtual String getErrorMessage()
+    virtual String getErrorMessage() const
     {
         return m_errorMessage;
     }
@@ -98,17 +102,17 @@ public:
         m_nRespCode = nRespCode;
     }
 
-    boolean isOK()
+    boolean isOK() const
     {
         return m_nRespCode == 200 || m_nRespCode == 206;
     }
     
-    boolean isUnathorized()
+    boolean isUnathorized() const
     {
         return m_nRespCode == 401;
     }
 
-    boolean isSuccess()
+    boolean isSuccess() const
     {
         return m_nRespCode > 0 && m_nRespCode < 400;
     }
@@ -237,7 +241,7 @@ INetResponse* CURLNetRequest::doRequest(const char *method, const String& strUrl
                                         const String& strBody, IRhoSession *oSession,
                                         Hashtable<String,String>* pHeaders)
 {
-    INetResponse* pResp = doPull(method, strUrl, strBody, null, oSession, pHeaders);
+    INetResponse* pResp = doPull(method, strUrl, strBody, NULL, oSession, pHeaders);
     return pResp;
 }
 
@@ -245,7 +249,7 @@ CURLcode CURLNetRequest::doCURLPerform(const String& strUrl)
 {
 	CURLcode err = m_curl.perform();
 
-	if ( err !=  CURLE_OK && !RHODESAPP().isBaseUrl(strUrl.c_str()) && err != CURLE_OBSOLETE4 )
+	if ( err !=  CURLE_OK && !RHODESAPP().isBaseUrl(strUrl.c_str()) && err != CURLE_OBSOLETE20 )
 	{
 		long statusCode = 0;
 		curl_easy_getinfo(m_curl.curl(), CURLINFO_RESPONSE_CODE, &statusCode);
@@ -263,8 +267,9 @@ INetResponse* CURLNetRequest::doPull(const char* method, const String& strUrl,
     int nRespCode = -1;
     Vector<char> respBody;
     long nStartFrom = 0;
-    if (oFile)
+    if (oFile) {
         nStartFrom = oFile->size();
+    }
 
 	if( !RHODESAPP().isBaseUrl(strUrl.c_str()) )
     {
@@ -274,87 +279,84 @@ INetResponse* CURLNetRequest::doPull(const char* method, const String& strUrl,
     }
 
     Hashtable<String,String> h;
-    if (pHeaders)
+    if (pHeaders) {
         h = *pHeaders;
-
-    for (int nAttempts = 0; nAttempts < 10; ++nAttempts) {
-        Vector<char> respChunk;
-        
-        RequestState state;
-        state.respChunk = &respChunk;
-        state.headers = pHeaders;
-        state.pFile = oFile;
-        state.request = this;
-        
-        ProxySettings proxySettings;
-        proxySettings.initFromConfig();
-		curl_slist *hdrs = m_curl.set_options(method, strUrl, strBody, oSession, &h, proxySettings );
-
-        CURL *curl = m_curl.curl();
-        if (pHeaders) {
-            curl_easy_setopt(curl, CURLOPT_HEADERDATA, &state);
-            curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, &CURLNetRequest::curlHeaderCallback);
-        }
-
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &state);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &CURLNetRequest::curlBodyDataCallback);
-		
-        if (nStartFrom > 0)
-		{
-			RAWLOG_INFO1("CURLNetRequest::doPull - resuming from %d",nStartFrom);
-            curl_easy_setopt(curl, CURLOPT_RESUME_FROM, nStartFrom);
-		}
-
-        CURLcode err = doCURLPerform(strUrl);
-        curl_slist_free_all(hdrs);
-        
-        long statusCode = 0;
-        if (curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &statusCode) != 0)
-            statusCode = 500;
-        
-        RAWTRACE2("CURLNetRequest::doPull - Status code: %d, response size: %d", (int)statusCode, respChunk.size() );
-        
-        switch (statusCode) {
-        case 416:
-    		//Do nothing, file is already loaded
-            break;
-            
-        case 206:
-            if ( oFile!= 0 ) {
-                oFile->flush();
-            } else {
-                std::copy(respChunk.begin(), respChunk.end(), std::back_inserter(respBody));
-            }
-            // Clear counter of attempts because 206 response does not considered to be failed attempt
-            nAttempts = 0;
-            break;
-
-        default:
-            if ( 0 == oFile ) {
-                respBody = respChunk;
-            }
-            break;
-        }
-        
-		if (err == CURLE_OPERATION_TIMEDOUT ) {
-            RAWLOG_INFO("Connection was closed by timeout, but we have part of data received; try to restore connection");
-            nRespCode = -1;
-            
-			if ( oFile != 0 ) {
-				oFile->flush();
-				nStartFrom = oFile->size();
-			} else if ( respChunk.size() > 0 ) {
-				nStartFrom = respBody.size();
-			}
-            continue;
-        }
-        
-        nRespCode = getResponseCode(err, respBody, oSession);
-        break;
     }
 
-	if( !RHODESAPP().isBaseUrl(strUrl.c_str()) )		   
+    Vector<char> respChunk;
+    
+    RequestState state;
+    state.respChunk = &respChunk;
+    state.headers = pHeaders;
+    state.pFile = oFile;
+    state.request = this;
+    
+    ProxySettings proxySettings;
+    proxySettings.initFromConfig();
+	curl_slist *hdrs = m_curl.set_options(method, strUrl, strBody, oSession, &h, proxySettings, AuthSettings(m_authMethod,m_authUser,m_authPassword) );
+
+    CURL *curl = m_curl.curl();
+    if (pHeaders) {
+        curl_easy_setopt(curl, CURLOPT_HEADERDATA, &state);
+        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, &CURLNetRequest::curlHeaderCallback);
+    }
+
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &state);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &CURLNetRequest::curlBodyDataCallback);
+	
+    if (nStartFrom > 0)
+	{
+		RAWLOG_INFO1("CURLNetRequest::doPull - resuming from %d",nStartFrom);
+        curl_easy_setopt(curl, CURLOPT_RESUME_FROM, nStartFrom);
+	}
+
+    CURLcode err = doCURLPerform(strUrl);
+    curl_slist_free_all(hdrs);
+    
+    long statusCode = 0;
+    if (curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &statusCode) != 0) {
+        statusCode = 500;
+    }
+    
+    RAWTRACE2("CURLNetRequest::doPull - Status code: %d, response size: %d", (int)statusCode, respChunk.size() );
+    
+    switch (statusCode) {
+    case 416:
+		//Do nothing, file is already loaded
+        break;
+        
+    case 206:
+        if ( oFile!= 0 ) {
+            oFile->flush();
+        } else {
+            std::copy(respChunk.begin(), respChunk.end(), std::back_inserter(respBody));
+        }
+        break;
+
+    default:
+        if ( 0 == oFile ) {
+            respBody = respChunk;
+        }
+        break;
+    }
+    
+	if (err == CURLE_OPERATION_TIMEDOUT ) {
+        RAWLOG_INFO("Connection was closed by timeout, but we have part of data received; try to restore connection");
+        nRespCode = -1;
+        
+		if ( oFile != 0 ) {
+			oFile->flush();
+			nStartFrom = oFile->size();
+		} else if ( respChunk.size() > 0 ) {
+			nStartFrom = respBody.size();
+		}
+    } else {        
+        nRespCode = getResponseCode(err, respBody, oSession);
+    }
+
+	if( !RHODESAPP().isBaseUrl(strUrl.c_str()) ) {
 	   rho_net_impl_network_indicator(0);
+    }
     
     if ( m_pCallback != 0 )
     {
@@ -392,7 +394,7 @@ INetResponse* CURLNetRequest::pushMultipartData(const String& strUrl, VectorPtr<
     
     ProxySettings proxySettings;
     proxySettings.initFromConfig();
-    curl_slist *hdrs = m_curl.set_options("POST", strUrl, String(), oSession, pHeaders, proxySettings );
+    curl_slist *hdrs = m_curl.set_options("POST", strUrl, String(), oSession, pHeaders, proxySettings, AuthSettings(m_authMethod,m_authUser,m_authPassword) );
     CURL *curl = m_curl.curl();
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &strRespBody);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &curlBodyStringCallback);
@@ -630,7 +632,7 @@ void CURLNetRequest::ProxySettings::initFromConfig() {
 
 
 curl_slist *CURLNetRequest::CURLHolder::set_options(const char *method, const String& strUrl, const String& strBody,
-                             IRhoSession* pSession, Hashtable<String,String>* pHeaders, const ProxySettings& proxySettings)
+                             IRhoSession* pSession, Hashtable<String,String>* pHeaders, const ProxySettings& proxySettings, const AuthSettings& authSettings)
 {
     if (method != NULL) {
         mStrMethod = method;
@@ -750,7 +752,7 @@ curl_slist *CURLNetRequest::CURLHolder::set_options(const char *method, const St
         curl_easy_setopt(m_curl,CURLOPT_NOPROXY,"127.0.0.1,localhost");
     }
     
-#ifdef OS_WP8
+#if defined(OS_WP8) || defined(OS_UWP)
 		if(strcasecmp(method, "POST") == 0 && strBody.length() == 0)
 		{
 			mStrBody = " ";
@@ -759,11 +761,29 @@ curl_slist *CURLNetRequest::CURLHolder::set_options(const char *method, const St
 		}
 #endif
 
+        RAWTRACE1( "Setting auth data for request: Method: %d, user: <SECRET>, password: <SECRET>", authSettings.method );
+        switch (authSettings.method) {
+        case AUTH_DIGEST:
+            curl_easy_setopt(m_curl, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);
+            curl_easy_setopt(m_curl, CURLOPT_USERNAME, authSettings.user.c_str());
+            curl_easy_setopt(m_curl, CURLOPT_PASSWORD, authSettings.password.c_str());
+            break;
+
+        case AUTH_BASIC:
+            curl_easy_setopt(m_curl, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+            curl_easy_setopt(m_curl, CURLOPT_USERNAME, authSettings.user.c_str());
+            curl_easy_setopt(m_curl, CURLOPT_PASSWORD, authSettings.password.c_str());
+            break;
+        }
+
     return hdrs;
 }
 
 CURLNetRequest::CURLHolder::CURLHolder()
     :m_active(0)
+      #ifdef mutexSmartPointer
+      ,m_lock(new common::CMutex())
+      #endif
 {
     m_bTraceCalls = rho_conf_getBool("net_trace") && !rho_conf_getBool("log_skip_post");
     timeout = rho_conf_getInt("net_timeout");
@@ -784,7 +804,12 @@ CURLNetRequest::CURLHolder::~CURLHolder()
     
 void CURLNetRequest::CURLHolder::activate()
 {
+#ifdef mutexSmartPointer
+    mutexSmartPointer l_lock = m_lock;
+    common::CMutexLock guard(*l_lock.get());
+#else
     common::CMutexLock guard(m_lock);
+#endif
     if (m_active > 0)
         return;
     ++m_active;
@@ -793,7 +818,12 @@ void CURLNetRequest::CURLHolder::activate()
 
 void CURLNetRequest::CURLHolder::deactivate()
 {
+#ifdef mutexSmartPointer
+    mutexSmartPointer l_lock = m_lock;
+    common::CMutexLock guard(*l_lock.get());
+#else
     common::CMutexLock guard(m_lock);
+#endif
     if (m_active == 0)
         return;
     --m_active;
@@ -815,7 +845,12 @@ CURLcode CURLNetRequest::CURLHolder::perform()
     CURLcode result;
     for(;;)
     {
+#ifdef mutexSmartPointer
+        mutexSmartPointer l_lock = m_lock;
+        common::CMutexLock guard(*l_lock.get());
+#else
         common::CMutexLock guard(m_lock);
+#endif
         if (m_active <= 0) {
             RAWLOG_INFO("CURLNetRequest: request was canceled from another thread !");
             if ( !rho_conf_getBool("log_skip_post") )
@@ -823,7 +858,7 @@ CURLcode CURLNetRequest::CURLHolder::perform()
             else
                 RAWLOG_INFO1("   CURLNetRequest: METHOD = [%s]", mStrMethod.c_str());
 
-			return CURLE_OBSOLETE4; 
+			return CURLE_OBSOLETE20; 
         }
     
         int running;

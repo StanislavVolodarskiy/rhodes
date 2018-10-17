@@ -2,7 +2,7 @@
 
   dln.h -
 
-  $Author: akr $
+  $Author$
   created at: Wed Jan 19 16:53:09 JST 1994
 
   Copyright (C) 1993-2007 Yukihiro Matsumoto
@@ -11,6 +11,14 @@
 
 #ifndef DLN_H
 #define DLN_H
+
+#ifdef OS_UWP
+//#include "include\ruby\intern.h"
+#include "include\ruby\defines.h"
+#endif
+#ifdef OS_LINUX
+#include <ruby/defines.h>
+#endif
 
 #ifdef __cplusplus
 # ifndef  HAVE_PROTOTYPES
@@ -28,14 +36,24 @@
 # define _(args) ()
 #endif
 
-DEPRECATED(char *dln_find_exe(const char*,const char*));
-DEPRECATED(char *dln_find_file(const char*,const char*));
-char *dln_find_exe_r(const char*,const char*,char*,size_t);
-char *dln_find_file_r(const char*,const char*,char*,size_t);
+RUBY_SYMBOL_EXPORT_BEGIN
+
+#ifndef DLN_FIND_EXTRA_ARG
+#define DLN_FIND_EXTRA_ARG
+#endif
+#ifndef DLN_FIND_EXTRA_ARG_DECL
+#define DLN_FIND_EXTRA_ARG_DECL
+#endif
+
+char *dln_find_exe_r(const char*,const char*,char*,size_t DLN_FIND_EXTRA_ARG_DECL);
+char *dln_find_file_r(const char*,const char*,char*,size_t DLN_FIND_EXTRA_ARG_DECL);
 
 #ifdef USE_DLN_A_OUT
 extern char *dln_argv0;
 #endif
 
 void *dln_load(const char*);
+
+RUBY_SYMBOL_EXPORT_END
+
 #endif

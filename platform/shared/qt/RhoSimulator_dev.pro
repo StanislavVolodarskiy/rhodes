@@ -1,3 +1,20 @@
+greaterThan(QT_MINOR_VERSION, 6): {
+    CONFIG += c++14
+    DEFINES += CPP_ELEVEN
+    DEFINES += RHODES_VERSION_2
+}
+
+equals(QT_MAJOR_VERSION, 5) {
+    equals(QT_MINOR_VERSION, 6) {
+        QT += webkit widgets
+        DEFINES += OS_SAILFISH OS_LINUX CPP_ELEVEN
+        CONFIG += c++14
+    }
+}
+
+lessThan(QT_MINOR_VERSION, 6): {
+    DEFINES += RHODES_VERSION_1
+}
 TEMPLATE = subdirs
 SUBDIRS = rubylib rholib sqlite3 syncengine \
 ../../../lib/commonAPI/coreapi/ext/platform/qt/coreapi.pro \
@@ -10,8 +27,9 @@ SUBDIRS = rubylib rholib sqlite3 syncengine \
 #../../../lib/extensions/fcntl/ext/fcntl.pro \
 #../../../lib/extensions/openssl/ext/openssl.pro \
 #../../../lib/extensions/serialport/ext/serialport.pro \
-../../../lib/extensions/zlib/ext/zlib.pro\
-../../../lib/commonAPI/mediacapture/ext/platform/qt/MediaCapture.pro
+../../../lib/extensions/zlib/ext/zlib.pro# \
+#../../../lib/commonAPI/mediacapture/ext/platform/qt/MediaCapture.pro \
+#../../../lib/commonAPI/barcode/ext/platform/qt/Barcode.pro
 
 unix:!macx {
  # SUBDIRS += curl

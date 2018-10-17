@@ -131,10 +131,6 @@ static BOOL app_created = NO;
 }
 @end
 
-
-
-
-
 @implementation Rhodes
 
 @synthesize window, player, cookies, signatureDelegate, nvDelegate, mBlockExit,  mScreenStateChanged, mNetworkPollCondition;
@@ -191,6 +187,7 @@ static Rhodes *instance = NULL;
         [[Rhodes sharedInstance] setFullScreen:NO];
 		[Rhodes performOnUiThread:[RhoFullScreenDisableTask class] wait:NO];
 	}
+    [[[[Rhodes sharedInstance] mainView] getMainViewController] setNeedsStatusBarAppearanceUpdate];
 }
 
 - (BOOL)getFullScreen {
@@ -341,6 +338,52 @@ static Rhodes *instance = NULL;
     //NSString *basicUrl = [NSString stringWithFormat:@"%@://%@/%@", parsed.scheme, parsed.host, parsed.path];
     //const char* cu = [basicUrl UTF8String];
     //[cookies setObject:cookie forKey:basicUrl];
+}
+
+- (NSDictionary*)getCookies:(NSString*)url {
+    NSHTTPCookieStorage* storage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+    NSURL *urlObj = [NSURL URLWithString:url];
+    
+    NSArray<NSHTTPCookie*>* cookies = [storage cookiesForURL:urlObj];
+    NSMutableDictionary* dict = [NSMutableDictionary dictionaryWithCapacity:[cookies count]];
+    
+    for ( NSHTTPCookie* cookie in cookies ) {
+        NSString* name = [cookie name];
+        NSString* val = [cookie value];
+        
+        NSString* sRFCCookie = [NSString stringWithFormat:@"%@=%@",name,val];
+        
+        [dict setObject:sRFCCookie forKey:name];
+    }
+    
+    return dict;
+}
+
+- (BOOL)removeCookie:(NSString*)url name:(NSString*)cookieName {
+    NSHTTPCookieStorage* storage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+    NSURL *urlObj = [NSURL URLWithString:url];
+    
+    BOOL removed = false;
+
+    NSArray<NSHTTPCookie*>* cookies = [storage cookiesForURL:urlObj];
+    for ( NSHTTPCookie* cookie in cookies ) {
+        if ( [[cookie name] isEqualToString:cookieName] ) {
+            [storage deleteCookie:cookie];
+            removed = true;
+            break;
+        }
+    }
+    
+    return removed;
+}
+
+- (BOOL)removeAllCookies {
+    NSHTTPCookieStorage *storage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+    for (NSHTTPCookie* cookie in storage.cookies) {
+        [storage deleteCookie:cookie];
+    }
+    
+    return true;
 }
 
 //unused now
@@ -788,7 +831,9 @@ static void displayStatusChanged(CFNotificationCenterRef center, void *observer,
     if ((rho_conf_getBool("full_screen") != 0) || (fs[0] != '0')) {
         [Rhodes setStatusBarHidden:YES];
 #ifdef __IPHONE_3_2
-        [[Rhodes application] setStatusBarHidden:YES withAnimation:NO];
+        if ([[Rhodes application] respondsToSelector:@selector(setStatusBarHidden:withAnimation:)]) {
+            [[Rhodes application] setStatusBarHidden:YES withAnimation:NO];
+        }
 #else
         [[Rhodes application] setStatusBarHidden:YES animated:NO];
 #endif    
@@ -860,7 +905,20 @@ static void displayStatusChanged(CFNotificationCenterRef center, void *observer,
 - (void) registerForPushNotifications:(id<IPushNotificationsReceiver>)receiver;
 {
 #ifdef APP_BUILD_CAPABILITY_PUSH
-    [self performSelectorOnMainThread:@selector(registerForPushNotificationsInternal:) withObject:receiver waitUntilDone:NO];
+    //[self performSelectorOnMainThread:@selector(registerForPushNotificationsInternal:) withObject:receiver waitUntilDone:NO];
+     pushReceiver = receiver;
+    if (mPushStoredData_DeviceToken != nil) {
+        [pushReceiver onPushRegistrationSucceed:mPushStoredData_DeviceToken];
+        mPushStoredData_DeviceToken = nil;
+    }
+    if (mPushStoredData_RegisterError != nil) {
+        [pushReceiver onPushRegistrationFailed:mPushStoredData_RegisterError];
+        mPushStoredData_RegisterError = nil;
+    }
+    if (mPushStoredData_UserInfo != nil) {
+        [pushReceiver onPushMessageReceived:mPushStoredData_UserInfo];
+        mPushStoredData_UserInfo = nil;
+    }
 #endif
 }
 
@@ -1070,10 +1128,14 @@ static void displayStatusChanged(CFNotificationCenterRef center, void *observer,
 #ifdef __IPHONE_3_0
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     
-    
     self.mBlockExit = NO;
+
+    mPushStoredData_UserInfo = nil;
+    mPushStoredData_RegisterError = nil;
+    mPushStoredData_DeviceToken = nil;
     
-    
+    splashViewControllerSnapShot = nil;
+
     instance = self;
     eventStore = nil; 
     self->application = [UIApplication sharedApplication];
@@ -1091,11 +1153,50 @@ static void displayStatusChanged(CFNotificationCenterRef center, void *observer,
 	NSURL* url = [launchOptions objectForKey:UIApplicationLaunchOptionsURLKey];
     // log not ready
     [AppManager startupLogging:[NSString stringWithFormat:@"didFinishLaunchingWithOptions: %@", [url absoluteString]]];
-	
-    
-    //[self registerForRemoteNotification];
-    
-    
+
+
+#ifdef APP_BUILD_CAPABILITY_PUSH
+    if (floor(NSFoundationVersionNumber) <= NSFoundationVersionNumber_iOS_7_1) {
+        // iOS 7.1 or earlier. Disable the deprecation warnings.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        UIRemoteNotificationType allNotificationTypes =
+        (UIRemoteNotificationTypeSound |
+         UIRemoteNotificationTypeAlert |
+         UIRemoteNotificationTypeBadge);
+        [application registerForRemoteNotificationTypes:allNotificationTypes];
+#pragma clang diagnostic pop
+    } else {
+        // iOS 8 or later
+        // [START register_for_notifications]
+        if (floor(NSFoundationVersionNumber) <= NSFoundationVersionNumber_iOS_9_x_Max) {
+            UIUserNotificationType allNotificationTypes =
+            (UIUserNotificationTypeSound | UIUserNotificationTypeAlert | UIUserNotificationTypeBadge);
+            UIUserNotificationSettings *settings =
+            [UIUserNotificationSettings settingsForTypes:allNotificationTypes categories:nil];
+            [application registerUserNotificationSettings:settings];
+        } else {
+            // iOS 10 or later
+#if 0
+#if defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_10_0
+            // For iOS 10 display notification (sent via APNS)
+            [UNUserNotificationCenter currentNotificationCenter].delegate = self;
+            UNAuthorizationOptions authOptions =
+            UNAuthorizationOptionAlert
+            | UNAuthorizationOptionSound
+            | UNAuthorizationOptionBadge;
+            [[UNUserNotificationCenter currentNotificationCenter] requestAuthorizationWithOptions:authOptions completionHandler:^(BOOL granted, NSError * _Nullable error) {
+            }];
+#endif
+#endif
+        }
+        
+        //[application registerForRemoteNotifications];
+        // [END register_for_notifications]
+    }
+    [self registerForRemoteNotification];
+#endif
+
 	// store start parameter
 	NSString* start_parameter = [NSString stringWithUTF8String:""];
 	if (url != nil) {
@@ -1145,6 +1246,43 @@ static void displayStatusChanged(CFNotificationCenterRef center, void *observer,
 	return NO;
 }
 
+#ifdef APP_BUILD_CAPABILITY_PUSH
+#if 0
+#if defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_10_0
+// Handle incoming notification messages while app is in the foreground.
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+       willPresentNotification:(UNNotification *)notification
+         withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler {
+    NSDictionary *userInfo = notification.request.content.userInfo;
+    
+    [self processPushMessage:userInfo];
+    
+    // Change this to your preferred presentation option
+    completionHandler(UNNotificationPresentationOptionNone);
+}
+
+// Handle notification messages after display notification is tapped by the user.
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+didReceiveNotificationResponse:(UNNotificationResponse *)response
+#if defined(__IPHONE_11_0)
+         withCompletionHandler:(void(^)(void))completionHandler {
+#else
+withCompletionHandler:(void(^)())completionHandler {
+#endif
+    NSDictionary *userInfo = response.notification.request.content.userInfo;
+    if (userInfo[kGCMMessageIDKey]) {
+        NSLog(@"Message ID: %@", userInfo[kGCMMessageIDKey]);
+    }
+    
+    // Print full message.
+    NSLog(@"%@", userInfo);
+    
+    completionHandler();
+}
+#endif
+#endif
+#endif
+
 - (void) exit_with_errormessage:(NSString*)title message:(NSString*)message 
 {
     [Rhodes sharedInstance].mBlockExit = YES;
@@ -1179,28 +1317,57 @@ static void displayStatusChanged(CFNotificationCenterRef center, void *observer,
 
 - (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken
 {
-    RAWLOG_INFO1([[NSString stringWithFormat:@"PUSH My token is: %@", deviceToken] UTF8String]);
+    NSLog(@"PUSH My token is: %@", deviceToken);
+    //RAWLOG_INFO1([[NSString stringWithFormat:@"PUSH My token is: %@", deviceToken] UTF8String]);
     if ( pushReceiver != nil ) {
         [pushReceiver onPushRegistrationSucceed:deviceToken];
+    }
+    else {
+        mPushStoredData_DeviceToken = [deviceToken copy];
     }
 }
 
 - (void)application:(UIApplication *)application didFailToRegisterForRemoteNotificationsWithError:(NSError *)error
 {
-    RAWLOG_INFO1([[NSString stringWithFormat:@"PUSH Failed to get token, error: %@", error] UTF8String]);
+    NSLog(@"PUSH Failed to get token, error: %@", error);
+    //RAWLOG_ERROR1([[NSString stringWithFormat:@"PUSH Failed to get token, error: %@", error] UTF8String]);
     if ( pushReceiver != nil ) {
         [pushReceiver onPushRegistrationFailed:error];
     }
+    else {
+        mPushStoredData_RegisterError = [error copy];
+    }
 }
 
-- (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo
-{
-    RAWLOG_INFO1([[NSString stringWithFormat:@"PUSH Received notification: %@", userInfo] UTF8String]);
+-(void) processPushMessage:(NSDictionary*)userInfo {
+    NSLog(@"PUSH Received notification: %@", userInfo);
+    //RAWLOG_INFO1([[NSString stringWithFormat:@"PUSH Received notification: %@", userInfo] UTF8String]);
     if ( pushReceiver != nil ) {
         [pushReceiver onPushMessageReceived:userInfo];
     }
-    
-//	[self processPushMessage:userInfo];
+    else {
+        mPushStoredData_UserInfo = [userInfo copy];
+    }
+}
+- (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo
+{
+    [self processPushMessage:userInfo];
+}
+
+
+- (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult result))completionHandler {
+    if(application.applicationState == UIApplicationStateInactive) {
+        NSLog(@"didReceiveRemoteNotification: Inactive");
+        [self processPushMessage:userInfo];
+        completionHandler(UIBackgroundFetchResultNoData);
+    } else if (application.applicationState == UIApplicationStateBackground) {
+        NSLog(@"didReceiveRemoteNotification: Background");
+        completionHandler(UIBackgroundFetchResultNoData);
+    } else {
+        //RAWLOG_INFO("didReceiveRemoteNotification: Active");
+        [self processPushMessage:userInfo];
+        completionHandler(UIBackgroundFetchResultNoData);
+    }
 }
 
 #endif //APP_BUILD_CAPABILITY_PUSH
@@ -1242,6 +1409,14 @@ static void displayStatusChanged(CFNotificationCenterRef center, void *observer,
 
 #ifdef __IPHONE_4_0
 - (void)applicationDidEnterBackground:(UIApplication *)app {
+    
+    if ([SplashViewController isReplaceContentWhenSnapshot]) {
+        if (splashViewControllerSnapShot == nil) {
+            splashViewControllerSnapShot = [[SplashViewController alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+        }
+        [self.window.rootViewController presentViewController:[splashViewControllerSnapShot retain] animated:NO completion:NULL];
+    }
+    
 
     RAWLOG_INFO("Application go to background");
     rho_rhodesapp_callUiDestroyedCallback();
@@ -1288,6 +1463,9 @@ static void displayStatusChanged(CFNotificationCenterRef center, void *observer,
 }
 
 - (void)applicationWillEnterForeground:(UIApplication *)application {
+    if ([SplashViewController isReplaceContentWhenSnapshot]) {
+        [self.window.rootViewController dismissViewControllerAnimated:NO completion:NO];
+    }
     [self registerForNotifications];
 }
 #endif

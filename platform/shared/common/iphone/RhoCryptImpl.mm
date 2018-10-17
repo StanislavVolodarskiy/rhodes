@@ -33,10 +33,14 @@
 #import <CommonCrypto/CommonCryptor.h>
 
 #define kChosenCipherBlockSize	kCCBlockSizeAES128
-#define kChosenCipherKeySize	kCCKeySizeAES128
+#define kChosenCipherKeySize	kCCKeySizeAES256
 #define kChosenDigestLength		CC_SHA1_DIGEST_LENGTH
 
 // (See cssmtype.h and cssmapple.h on the Mac OS X SDK.)
+
+extern "C" {
+bool isNewInstallation;
+};
 
 enum {
 	CSSM_ALGID_NONE =					0x00000000L,
@@ -52,6 +56,7 @@ IMPLEMENT_LOGCLASS(CRhoCryptImpl,"RhoCrypt");
 CRhoCryptImpl::CRhoCryptImpl(void) : m_dbKeyData(NULL)
 {
 	m_dwLastError = 0;
+	currentKeySize = kCCKeySizeAES256;
 }
 
 CRhoCryptImpl::~CRhoCryptImpl(void)
@@ -94,7 +99,7 @@ bool CRhoCryptImpl::_checkError( int32_t status, const char* szFunc )
     return false;
 }
 
-static NSData* getStorageKeyTag(const char* szDBPartition)
+static NSData* getStorageKeyTagOld(const char* szDBPartition)
 {
 	NSString* strPartition = [[NSString alloc] initWithUTF8String:szDBPartition];
 	NSString* strAppName = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleName"];
@@ -107,27 +112,90 @@ static NSData* getStorageKeyTag(const char* szDBPartition)
 		
 	return resData;
 }
-	
-void CRhoCryptImpl::readKeyFromStorage()
+
+static NSData* getStorageKeyTagOld256(const char* szDBPartition)
 {
-	NSData*	storageKeyTag = getStorageKeyTag(m_strDBPartition.c_str());
+	NSString* strPartition = [[NSString alloc] initWithUTF8String:szDBPartition];
+	NSString* strAppName = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleName"];
+	NSString* strTagName = [NSString stringWithFormat: @"com.rhomobile.%@.%@.dbkey256", strAppName, strPartition];
+		
+	NSData* resData = [strTagName dataUsingEncoding:NSUTF8StringEncoding];
+		
+	//[strTagName release];
+	[strPartition release];
+		
+	return resData;
+}
+    
+static NSData* getStorageKeyTagNew(const char* szDBPartition)
+{
+        NSString* strPartition = [[NSString alloc] initWithUTF8String:szDBPartition];
+        NSString* strAppName = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleIdentifier"];
+        NSString* strTagName = [NSString stringWithFormat: @"com.tau.%@.%@.dbkey", strAppName, strPartition];
+        
+        //NSLog(@"$$$ STORAGE_KEY_TAG = %@", strTagName);
+        
+        NSData* resData = [strTagName dataUsingEncoding:NSUTF8StringEncoding];
+        
+        //[strTagName release];
+        [strPartition release];
+        
+        return resData;
+}
+
+static NSData* getStorageKeyTagNew256(const char* szDBPartition)
+{
+        NSString* strPartition = [[NSString alloc] initWithUTF8String:szDBPartition];
+        NSString* strAppName = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleIdentifier"];
+        NSString* strTagName = [NSString stringWithFormat: @"com.tau.%@.%@.dbkey256", strAppName, strPartition];
+        
+        //NSLog(@"$$$ STORAGE_KEY_TAG = %@", strTagName);
+        
+        NSData* resData = [strTagName dataUsingEncoding:NSUTF8StringEncoding];
+        
+        //[strTagName release];
+        [strPartition release];
+        
+        return resData;
+}
+
+void initSymmetrickKeyOld(NSMutableDictionary* querySymmetricKey, NSData* storageKeyTag)
+{
+	[querySymmetricKey setObject:(id)kSecClassKey forKey:(id)kSecClass];
+	[querySymmetricKey setObject:storageKeyTag forKey:(id)kSecAttrApplicationTag];
+	[querySymmetricKey setObject:[NSNumber numberWithUnsignedInt:CSSM_ALGID_AES] forKey:(id)kSecAttrKeyType];
+	[querySymmetricKey setObject:[NSNumber numberWithBool:YES] forKey:(id)kSecReturnData];
+}
+
+void CRhoCryptImpl::readKeyFromStorageOld()
+{
+	NSData*	storageKeyTag = getStorageKeyTagOld256(m_strDBPartition.c_str());
 	OSStatus sanityCheck = noErr;
 	NSData * symmetricKeyReturn = nil;
 	
 	NSMutableDictionary * querySymmetricKey = [[NSMutableDictionary alloc] init];
 	
 	// Set the private key query dictionary.
-	[querySymmetricKey setObject:(id)kSecClassKey forKey:(id)kSecClass];
-	[querySymmetricKey setObject:storageKeyTag forKey:(id)kSecAttrApplicationTag];
-	[querySymmetricKey setObject:[NSNumber numberWithUnsignedInt:CSSM_ALGID_AES] forKey:(id)kSecAttrKeyType];
-	[querySymmetricKey setObject:[NSNumber numberWithBool:YES] forKey:(id)kSecReturnData];
+	initSymmetrickKeyOld(querySymmetricKey, storageKeyTag);
 	
 	// Get the key bits.
 	sanityCheck = SecItemCopyMatching((CFDictionaryRef)querySymmetricKey, (CFTypeRef *)&symmetricKeyReturn);
-	if (sanityCheck == noErr && symmetricKeyReturn != nil && [symmetricKeyReturn length] == kChosenCipherKeySize) 
+
+	if(sanityCheck != noErr)
 	{
-		m_dbKeyData = (uint8_t *)malloc( kChosenCipherKeySize * sizeof(uint8_t) );
-		memcpy( m_dbKeyData, [symmetricKeyReturn bytes], kChosenCipherKeySize );
+		sanityCheck = noErr;
+		symmetricKeyReturn = nil;
+		storageKeyTag = getStorageKeyTagOld(m_strDBPartition.c_str());
+		initSymmetrickKeyOld(querySymmetricKey, storageKeyTag);
+		sanityCheck = SecItemCopyMatching((CFDictionaryRef)querySymmetricKey, (CFTypeRef *)&symmetricKeyReturn);
+		if(sanityCheck == noErr)
+			    currentKeySize = kCCKeySizeAES128;
+	}
+
+	if (sanityCheck == noErr && symmetricKeyReturn != nil && [symmetricKeyReturn length] == currentKeySize) 
+	{
+		m_dbKeyData = (uint8_t *)malloc( currentKeySize * sizeof(uint8_t) );
+		memcpy( m_dbKeyData, [symmetricKeyReturn bytes], currentKeySize );
 	}
 	if ( symmetricKeyReturn )
 		[symmetricKeyReturn release];
@@ -137,8 +205,92 @@ void CRhoCryptImpl::readKeyFromStorage()
 	//if ( storageKeyTag )
 	//	[storageKeyTag release];
 }
+    
 
-static void deleteKeyFromStorage(NSData* storageKeyTag)
+static void initSymmetrickKeyNew(NSMutableDictionary* querySymmetricKey, NSData* storageKeyTag)
+{
+	[querySymmetricKey setObject:(id)kSecMatchLimitAll forKey:(id)kSecMatchLimit];
+        
+    [querySymmetricKey       setObject:(__bridge id)kSecClassKey
+                                forKey:(__bridge id)kSecClass];
+        
+    [querySymmetricKey       setObject:(__bridge id)kCFBooleanTrue
+                                forKey:(__bridge id)kSecAttrIsPermanent];
+        
+    [querySymmetricKey       setObject:(__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+                                forKey:(__bridge id)kSecAttrAccessible];
+        
+    [querySymmetricKey       setObject:(__bridge id)kSecAttrKeyClassSymmetric
+                                forKey:(__bridge id)kSecAttrKeyClass];
+        
+    [querySymmetricKey       setObject:(__bridge id)storageKeyTag
+                                forKey:(__bridge id)kSecAttrApplicationTag];
+        
+    [querySymmetricKey       setObject:(__bridge id)kCFBooleanTrue
+                                forKey:(__bridge id)kSecReturnData];
+}
+
+void CRhoCryptImpl::readKeyFromStorageNew()
+{
+        NSData*    storageKeyTag = getStorageKeyTagNew256(m_strDBPartition.c_str());
+        OSStatus sanityCheck = noErr;
+		
+        NSData * symmetricKeyReturn = nil;
+        NSArray* keychainItemReturn = nil;
+        
+        NSMutableDictionary * querySymmetricKey = [[NSMutableDictionary alloc] init];
+        
+        initSymmetrickKeyNew(querySymmetricKey, storageKeyTag);
+        
+        // Get the key bits.
+        sanityCheck = SecItemCopyMatching((CFDictionaryRef)querySymmetricKey, (CFTypeRef *)&keychainItemReturn);
+		if(sanityCheck != noErr) //try read old key
+		{
+			sanityCheck = noErr;
+			symmetricKeyReturn = nil;
+			keychainItemReturn = nil;
+
+			storageKeyTag = getStorageKeyTagNew(m_strDBPartition.c_str());
+			initSymmetrickKeyNew(querySymmetricKey, storageKeyTag);
+			sanityCheck = SecItemCopyMatching((CFDictionaryRef)querySymmetricKey, (CFTypeRef *)&keychainItemReturn);
+			if(sanityCheck == noErr)
+			    currentKeySize = kCCKeySizeAES128;
+		}
+		
+        if (sanityCheck == noErr && keychainItemReturn != nil )
+        {
+            symmetricKeyReturn = (NSData*)[keychainItemReturn objectAtIndex:0];
+            if ([symmetricKeyReturn length] == currentKeySize) {
+                m_dbKeyData = (uint8_t *)malloc( currentKeySize * sizeof(uint8_t) );
+                memcpy( m_dbKeyData, [symmetricKeyReturn bytes], currentKeySize );
+            }
+            else {
+                RAWLOG_ERROR2("$$$ STORAGE SecItemCopyMatching() invalid key size = %d, should be = %d", (int)[symmetricKeyReturn length], (int)currentKeySize);
+            }
+        }
+        else 
+		{
+			RAWLOG_ERROR("$$$ STORAGE SecItemCopyMatching() return  ERROR !");
+            RAWLOG_ERROR1("$$$ STORAGE SecItemCopyMatching() sanityCheck = %d", (int)sanityCheck);
+            
+            if (sanityCheck == noErr && symmetricKeyReturn != nil) {
+                //NSLog(@"$$$ STORAGE SecItemCopyMatching() symmetricKeyReturn = %@", symmetricKeyReturn);
+                RAWLOG_ERROR1("$$$ STORAGE SecItemCopyMatching() symmetricKeyReturn length = %d", (int)[symmetricKeyReturn length]);
+                RAWLOG_ERROR1("$$$ STORAGE SecItemCopyMatching() currentKeySize = %d", (int)currentKeySize);
+            }
+            
+            
+        }
+        if ( symmetricKeyReturn )
+            [symmetricKeyReturn release];
+        
+        [querySymmetricKey release];
+        
+}
+    
+    
+
+static void deleteKeyFromStorageOld(NSData* storageKeyTag)
 {
 	OSStatus sanityCheck = noErr;
 	
@@ -156,23 +308,56 @@ static void deleteKeyFromStorage(NSData* storageKeyTag)
 	
 	[querySymmetricKey release];
 }
+    
+static void deleteKeyFromStorageNew(NSData* storageKeyTag)
+{
+        OSStatus sanityCheck = noErr;
+        
+        NSMutableDictionary * querySymmetricKey = [[NSMutableDictionary alloc] init];
+    
+        [querySymmetricKey       setObject:(__bridge id)kSecClassKey
+                                    forKey:(__bridge id)kSecClass];
+        
+        [querySymmetricKey       setObject:(__bridge id)kCFBooleanTrue
+                                    forKey:(__bridge id)kSecAttrIsPermanent];
+        
+        [querySymmetricKey       setObject:(__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+                                    forKey:(__bridge id)kSecAttrAccessible];
+        
+        [querySymmetricKey       setObject:(__bridge id)kSecAttrKeyClassSymmetric
+                                    forKey:(__bridge id)kSecAttrKeyClass];
+        
+        [querySymmetricKey       setObject:(__bridge id)storageKeyTag
+                                    forKey:(__bridge id)kSecAttrApplicationTag];
+    
+        // Delete the symmetric key.
+        sanityCheck = SecItemDelete((CFDictionaryRef)querySymmetricKey);
+        if ( sanityCheck != noErr && sanityCheck != errSecItemNotFound)
+            LOG(ERROR) + "Error removing key, OSStatus: " + sanityCheck + "; errno: " + errno;
+        
+        [querySymmetricKey release];
+}
+    
+    
 	
-void CRhoCryptImpl::writeKeyToStorage()
+void CRhoCryptImpl::writeKeyToStorageOld()
 {
 	OSStatus sanityCheck = noErr;
 	NSData * symmetricKeyRef = NULL;	
-	NSData*	storageKeyTag = getStorageKeyTag(m_strDBPartition.c_str());
+	NSData*	storageKeyTag = currentKeySize == kCCKeySizeAES256 ? 
+	    getStorageKeyTagOld256(m_strDBPartition.c_str()) :
+		getStorageKeyTagOld(m_strDBPartition.c_str());
 	
 	// First delete current symmetric key.
-	deleteKeyFromStorage(storageKeyTag);
+	deleteKeyFromStorageOld(storageKeyTag);
 	
 	// Container dictionary
 	NSMutableDictionary *symmetricKeyAttr = [[NSMutableDictionary alloc] init];
 	[symmetricKeyAttr setObject:(id)kSecClassKey forKey:(id)kSecClass];
 	[symmetricKeyAttr setObject:storageKeyTag forKey:(id)kSecAttrApplicationTag];
 	[symmetricKeyAttr setObject:[NSNumber numberWithUnsignedInt:CSSM_ALGID_AES] forKey:(id)kSecAttrKeyType];
-	[symmetricKeyAttr setObject:[NSNumber numberWithUnsignedInt:(unsigned int)(kChosenCipherKeySize << 3)] forKey:(id)kSecAttrKeySizeInBits];
-	[symmetricKeyAttr setObject:[NSNumber numberWithUnsignedInt:(unsigned int)(kChosenCipherKeySize << 3)]	forKey:(id)kSecAttrEffectiveKeySize];
+	[symmetricKeyAttr setObject:[NSNumber numberWithUnsignedInt:(unsigned int)(currentKeySize << 3)] forKey:(id)kSecAttrKeySizeInBits];
+	[symmetricKeyAttr setObject:[NSNumber numberWithUnsignedInt:(unsigned int)(currentKeySize << 3)]	forKey:(id)kSecAttrEffectiveKeySize];
 	[symmetricKeyAttr setObject:(id)kCFBooleanTrue forKey:(id)kSecAttrCanEncrypt];
 	[symmetricKeyAttr setObject:(id)kCFBooleanTrue forKey:(id)kSecAttrCanDecrypt];
 	[symmetricKeyAttr setObject:(id)kCFBooleanFalse forKey:(id)kSecAttrCanDerive];
@@ -181,7 +366,7 @@ void CRhoCryptImpl::writeKeyToStorage()
 	[symmetricKeyAttr setObject:(id)kCFBooleanFalse forKey:(id)kSecAttrCanWrap];
 	[symmetricKeyAttr setObject:(id)kCFBooleanFalse forKey:(id)kSecAttrCanUnwrap];
 	
-	symmetricKeyRef = [[NSData alloc] initWithBytes:(const void *)m_dbKeyData length:kChosenCipherKeySize];
+	symmetricKeyRef = [[NSData alloc] initWithBytes:(const void *)m_dbKeyData length:currentKeySize];
 	
 	// Add the wrapped key data to the container dictionary.
 	[symmetricKeyAttr setObject:symmetricKeyRef forKey:(id)kSecValueData];
@@ -196,16 +381,77 @@ void CRhoCryptImpl::writeKeyToStorage()
 	//[storageKeyTag release];
 }
 
+    
+void CRhoCryptImpl::writeKeyToStorageNew()
+{
+        OSStatus sanityCheck = noErr;
+        NSData * symmetricKeyRef = NULL;
+        NSData*    storageKeyTag = currentKeySize == kCCKeySizeAES256 ? 
+		    getStorageKeyTagNew256(m_strDBPartition.c_str()) :
+			getStorageKeyTagNew(m_strDBPartition.c_str());
+        
+        // First delete current symmetric key.
+        deleteKeyFromStorageNew(storageKeyTag);
+        
+        // Container dictionary
+        NSMutableDictionary *symmetricKeyAttr = [[NSMutableDictionary alloc] init];
+        
+        symmetricKeyRef = [[NSData alloc] initWithBytes:(const void *)m_dbKeyData length:currentKeySize];
+        
+        [symmetricKeyAttr       setObject:(__bridge id)kSecClassKey
+                                   forKey:(__bridge id)kSecClass];
+        
+        [symmetricKeyAttr       setObject:(__bridge id)kCFBooleanTrue
+                                   forKey:(__bridge id)kSecAttrIsPermanent];
+        
+        [symmetricKeyAttr       setObject:(__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+                                   forKey:(__bridge id)kSecAttrAccessible];
+        
+        [symmetricKeyAttr       setObject:(__bridge id)kSecAttrKeyClassSymmetric
+                                   forKey:(__bridge id)kSecAttrKeyClass];
+        
+        [symmetricKeyAttr       setObject:(__bridge id)storageKeyTag
+                                   forKey:(__bridge id)kSecAttrApplicationTag];
+        
+        [symmetricKeyAttr       setObject:(__bridge id)symmetricKeyRef
+                                   forKey:(__bridge id)kSecValueData];
+        
+        // Add the symmetric key to the keychain.
+        sanityCheck = SecItemAdd((CFDictionaryRef) symmetricKeyAttr, NULL);
+        if ( sanityCheck != noErr && sanityCheck != errSecDuplicateItem)
+            LOG(ERROR) + "Problem storing key in the keychain, OSStatus: " + sanityCheck + "; errno: " + errno;
+        
+        [symmetricKeyAttr release];
+        [symmetricKeyRef release];
+}
+    
+void CRhoCryptImpl::readKeyFromStorage() {
+    readKeyFromStorageNew();
+    if ( m_dbKeyData ) {
+        // found new scheme key - use it
+        return;
+    }
+    else {
+        // try to read old scheme key
+        readKeyFromStorageOld();
+        if ( m_dbKeyData ) {
+            // save to new scheme for future
+            writeKeyToStorageNew();
+        }
+    }
+}
+
+    
 void CRhoCryptImpl::generateNewKey()
 {
 	OSStatus sanityCheck = noErr;
 	uint8_t * symmetricKey = NULL;
 	
 	// Allocate some buffer space. I don't trust calloc.
-	symmetricKey = (uint8_t *)malloc( kChosenCipherKeySize * sizeof(uint8_t) );
-	memset((void *)symmetricKey, 0x0, kChosenCipherKeySize);
+	symmetricKey = (uint8_t *)malloc( currentKeySize * sizeof(uint8_t) );
+	memset((void *)symmetricKey, 0x0, currentKeySize);
 	
-	sanityCheck = SecRandomCopyBytes(kSecRandomDefault, kChosenCipherKeySize, symmetricKey);
+	sanityCheck = SecRandomCopyBytes(kSecRandomDefault, currentKeySize, symmetricKey);
 	if ( sanityCheck != noErr )
 	{
 		free(symmetricKey);
@@ -217,6 +463,13 @@ void CRhoCryptImpl::generateNewKey()
 	
 void CRhoCryptImpl::initContext(const char* szPartition)
 {
+	if(isNewInstallation && !m_dbKeyData)
+	{
+	    deleteKeyFromStorageOld(getStorageKeyTagOld256(m_strDBPartition.c_str()));
+		deleteKeyFromStorageOld(getStorageKeyTagOld(m_strDBPartition.c_str()));
+		deleteKeyFromStorageNew(getStorageKeyTagNew256(m_strDBPartition.c_str()));
+		deleteKeyFromStorageNew(getStorageKeyTagNew(m_strDBPartition.c_str()));
+	}
     if ( m_dbKeyData )
         return;
 
@@ -227,7 +480,8 @@ void CRhoCryptImpl::initContext(const char* szPartition)
         return;
 
 	generateNewKey();
-	writeKeyToStorage();
+    writeKeyToStorageOld();
+	writeKeyToStorageNew();
 }
 
 int CRhoCryptImpl::db_encrypt( const char* szPartition, int size, unsigned char* data, unsigned char* dataOut )
@@ -240,10 +494,10 @@ int CRhoCryptImpl::db_encrypt( const char* szPartition, int size, unsigned char*
 	
 	size_t movedBytes = 0;
 	
-	checkError( CCCrypt(  kCCEncrypt, kCCAlgorithmAES128,
+	checkError( CCCrypt(  kCCEncrypt, kCCAlgorithmAES,
 					   0, //kCCOptionPKCS7Padding
 					   (const void *)m_dbKeyData,
-					   kChosenCipherKeySize,
+					   currentKeySize,
 					   iv,
 					   (const void *) data,
 					   size,
@@ -265,10 +519,10 @@ int CRhoCryptImpl::db_decrypt( const char* szPartition, int size, unsigned char*
 	
 	size_t movedBytes = 0;
 	
-	checkError( CCCrypt(  kCCDecrypt, kCCAlgorithmAES128,
+	checkError( CCCrypt(  kCCDecrypt, kCCAlgorithmAES,
 									   0, //kCCOptionPKCS7Padding
 									   (const void *)m_dbKeyData,
-									   kChosenCipherKeySize,
+									   currentKeySize,
 									   iv,
 									   (const void *) data,
 									   size,
@@ -294,16 +548,18 @@ int CRhoCryptImpl::set_db_CryptKey( const char* szPartition, const char* szKey, 
 		m_dbKeyData = NULL;
 	}
 	
-	if ( dwBlobLen != kChosenCipherKeySize )
+	if ( dwBlobLen != currentKeySize )
 	{
-		LOG(ERROR) + "Incorrect key size : " + dwBlobLen + "; Should be: " + (int)kChosenCipherKeySize;
+		LOG(ERROR) + "Incorrect key size : " + dwBlobLen + "; Should be: " + (int)currentKeySize;
 		return 0;
 	}
-	m_dbKeyData = (uint8_t *)malloc( kChosenCipherKeySize * sizeof(uint8_t) );
-	memcpy(m_dbKeyData, pbKeyBlob, kChosenCipherKeySize);
+	m_dbKeyData = (uint8_t *)malloc( currentKeySize * sizeof(uint8_t) );
+	memcpy(m_dbKeyData, pbKeyBlob, currentKeySize);
 	
-	if ( bPersistent )
-		writeKeyToStorage();
+    if ( bPersistent ){
+        writeKeyToStorageOld();
+		writeKeyToStorageNew();
+    }
 	
     return 1;
 }

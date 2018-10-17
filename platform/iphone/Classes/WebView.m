@@ -34,6 +34,9 @@
 
 int rho_rhodesapp_check_mode();
 
+#define SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(v)  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
+
+
 static int getIndex(NSValue *value)
 {
     int index;
@@ -128,8 +131,11 @@ void rho_webview_navigate(const char* url, int index)
     //id arg1 = [NSString stringWithUTF8String:url];
     id arg1 = final_path;
 #else
-    id arg1 = [NSString stringWithUTF8String:rho_app_canonicalize_rho_url(url)];
-    [NSString stringWithUTF8String:url];
+    int len = rho_app_canonicalize_rho_url(url, NULL, 0);
+    char* buf = malloc(len+2);
+    rho_app_canonicalize_rho_url(url, buf, len+2);
+    id arg1 = [NSString stringWithUTF8String:buf];
+    free(buf);
 #endif
     id runnable = [RhoWebViewNavigateTask class];
     id arg2 = [NSValue valueWithBytes:&index objCType:@encode(int)];
@@ -210,6 +216,67 @@ BOOL rho_webview_get_full_screen_mode() {
     return [Rhodes getStatusBarHidden];
 }
 
+BOOL rho_webview_get_KeyboardDisplayRequiresUserAction() {
+    if (!rho_rhodesapp_check_mode())
+        return YES;
+    UIView *webv_v = [[[[Rhodes sharedInstance] mainView] getRhoWebView:-1] view];
+    UIWebView* webv = (UIWebView*)webv_v;
+
+    if (webv != nil) {
+        return webv.keyboardDisplayRequiresUserAction;
+    }
+
+    return YES;
+}
+
+void rho_webview_set_KeyboardDisplayRequiresUserAction(BOOL value) {
+    if (!rho_rhodesapp_check_mode())
+        return;
+    UIView *webv_v = [[[[Rhodes sharedInstance] mainView] getRhoWebView:-1] view];
+    UIWebView* webv = (UIWebView*)webv_v;
+
+    if (webv != nil) {
+        webv.keyboardDisplayRequiresUserAction = value;
+    }
+}
+
+BOOL rho_webview_get_EnableDragAndDrop() {
+    if (!rho_rhodesapp_check_mode())
+        return YES;
+    UIView *webv_v = [[[[Rhodes sharedInstance] mainView] getRhoWebView:-1] view];
+    UIWebView* webv = (UIWebView*)webv_v;
+
+    if (webv != nil) {
+        // TODO: detect current state
+        return YES;
+    }
+
+    return YES;
+}
+
+void rho_webview_set_EnableDragAndDrop(BOOL value) {
+    if (!rho_rhodesapp_check_mode())
+        return;
+    UIView *webv_v = [[[[Rhodes sharedInstance] mainView] getRhoWebView:-1] view];
+    UIWebView* webv = (UIWebView*)webv_v;
+
+    if (webv != nil) {
+        if (value) {
+            // TODO: restore interactions
+        }
+        else {
+#ifdef __IPHONE_11_0
+            if (SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(@"11.0")) {
+                dispatch_async( dispatch_get_main_queue(), ^{
+                    webv.scrollView.subviews[0].interactions = @[];
+                });
+            }
+#endif
+        }
+    }
+}
+
+
 
 
 void rho_webview_set_cookie(const char *u, const char *c)
@@ -221,6 +288,30 @@ void rho_webview_set_cookie(const char *u, const char *c)
     NSString *cookie = [NSString stringWithUTF8String:c];
     [Rhodes performOnUiThread:runnable arg:url arg:cookie wait:NO];
 }
+
+void rho_webview_get_cookies( NSString* url, NSDictionary** retVal )
+{
+  if (!rho_rhodesapp_check_mode())
+      return;
+
+    *retVal = [[Rhodes sharedInstance] getCookies:url];
+}
+
+BOOL rho_webview_remove_cookie( NSString* url, NSString* name )
+{
+  if (!rho_rhodesapp_check_mode())
+      return false;
+    
+  return [[Rhodes sharedInstance] removeCookie:url name:name];
+}
+
+BOOL rho_webview_remove_all_cookies() {
+    if (!rho_rhodesapp_check_mode())
+        return false;
+    
+    return [[Rhodes sharedInstance] removeAllCookies];
+}
+
 
 void rho_webview_save(const char* format, const char* path, int tab_index)
 {

@@ -32,7 +32,9 @@
 #include "MainWindowImpl.h"
 #undef null
 #if QT_VERSION >= 0x050000
+#ifndef OS_SAILFISH
 #include <QtMultimedia/QMediaPlayer>
+#endif
 #else
 #include <QSound>
 #endif
@@ -190,22 +192,27 @@ void alert_vibrate(int duration_ms) {
 
 void alert_play_file(char* file_name, char *media_type)
 {
-    String path = RHODESAPP().getRhoRootPath() + file_name;
+#ifndef OS_SAILFISH
+    RAWLOGC_INFO("AlertImpl", "OnAlertPlayFile: trying to play file");
+    String path = file_name;
 #if QT_VERSION >= 0x050000
     QMediaPlayer* player = new QMediaPlayer;
     QUrl url = QUrl::fromLocalFile(QString::fromStdString(path));
     player->setMedia(url);
     player->setVolume(100);
     player->play();
-    if ((player->availability() != QMultimedia::Available) || (player->error() != QMediaPlayer::NoError))
+    if ((player->availability() != QMultimedia::Available) || (player->error() != QMediaPlayer::NoError)){
+
+    }
+    player->deleteLater();
 #else
+    RAWLOGC_INFO("AlertImpl",path.c_str());
     if (QSound::isAvailable()) {
         QSound::play(QString(path.c_str()));
-    } else
+    } else{
+         RAWLOGC_INFO("AlertImpl", "OnAlertPlayFile: failed to play file");
+    }
 #endif
-        RAWLOGC_INFO("AlertImpl", "OnAlertPlayFile: failed to play file");
-#if QT_VERSION >= 0x050000
-    delete player;
 #endif
 }
 

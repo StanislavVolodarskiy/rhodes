@@ -7,6 +7,7 @@ class ManifestGenerator
   attr_accessor :versionCode
   attr_accessor :installLocation
   attr_accessor :minSdkVer
+  attr_accessor :targetSdkVer
   attr_accessor :maxSdkVer
   attr_accessor :permissions
   attr_accessor :usesPermissions
@@ -14,6 +15,7 @@ class ManifestGenerator
   attr_accessor :usesLibraries
   attr_accessor :screenOrientation
   attr_accessor :debuggable
+  attr_accessor :allowBackup
   attr_accessor :rhodesActivityIntentFilters
   attr_accessor :hardwareAcceleration
   attr_accessor :apikey
@@ -39,6 +41,7 @@ class ManifestGenerator
     end
     @screenOrientation = 'unspecified'
     @debuggable = 'false'
+    @allowBackup = 'true'
     @hardwareAcceleration = nil
     @manifestManifestAdds = []
     @applicationManifestAdds = []

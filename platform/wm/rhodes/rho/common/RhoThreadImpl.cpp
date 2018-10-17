@@ -86,7 +86,7 @@ void CRhoThreadImpl::stop(unsigned int nTimeoutToKillMs)
             ::TerminateThread(m_hThread,0);
         }
         ::CloseHandle(m_hThread);
-        m_hThread = null;
+        m_hThread = NULL;
     }
 }
 
@@ -111,3 +111,18 @@ void CRhoThreadImpl::sleep(unsigned int nTimeoutMs)
 
 }
 }
+
+extern "C" {
+
+void* rho_nativethread_start()
+{
+    //TODO: rho_nativethread_start
+    return 0;
+}
+
+void rho_nativethread_end(void* pData)
+{
+    //TODO: rho_nativethread_end
+}
+
+} //extern "C"

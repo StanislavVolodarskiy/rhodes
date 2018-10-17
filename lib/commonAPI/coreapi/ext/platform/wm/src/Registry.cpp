@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <Strsafe.h>
 #include "Registry.h"
+
+
 //bool WriteRegHandler (HKEY proot, LPCTSTR psubkey, LPCTSTR psetting, DWORD ptype, LPCTSTR pvalue_string, bool persistent)
 bool WriteRegHandler (rho::String proot, LPCTSTR psubkey, LPCTSTR psetting, rho::String ptype, LPCTSTR pvalue_string, bool persistent)
 {
@@ -220,21 +222,37 @@ BOOL WriteRegFile (HKEY hroot, LPCWSTR psubkey, LPCWSTR psetting, DWORD type, co
 
 	pfile = NULL;
 	ok = FALSE;
-
+#ifndef CPP_ELEVEN
 	if (hroot == HKEY_LOCAL_MACHINE)
-		proot = L"HKEY_LOCAL_MACHINE";
+		proot = (WCHAR *) L"HKEY_LOCAL_MACHINE";
 	else if (hroot == HKEY_CURRENT_USER)
-		proot = L"HKEY_CURRENT_USER";
+		proot = (WCHAR *) L"HKEY_CURRENT_USER";
 	else if (hroot == HKEY_CLASSES_ROOT)
-		proot = L"HKEY_CLASSES_ROOT";
+		proot = (WCHAR *) L"HKEY_CLASSES_ROOT";
 	else if (hroot == HKEY_USERS)
-		proot = L"HKEY_USERS";
+		proot = (WCHAR *) L"HKEY_USERS";
 	else
 	{
 		LOG(WARNING) + "Unknown hive: " + (DWORD)hroot;
 		goto Exit;
 	}
-
+#else
+    std::wstring temwstr;
+    if (hroot == HKEY_LOCAL_MACHINE)
+        temwstr = (WCHAR *) L"HKEY_LOCAL_MACHINE";
+    else if (hroot == HKEY_CURRENT_USER)
+        temwstr = (WCHAR *) L"HKEY_CURRENT_USER";
+    else if (hroot == HKEY_CLASSES_ROOT)
+        temwstr = (WCHAR *) L"HKEY_CLASSES_ROOT";
+    else if (hroot == HKEY_USERS)
+        temwstr = (WCHAR *) L"HKEY_USERS";
+    else
+    {
+        LOG(WARNING) + "Unknown hive: " + (DWORD)hroot;
+        goto Exit;
+    }
+    proot = const_cast<wchar_t *>(temwstr.c_str());
+#endif
 	// Form the filename, replacing '\' with '_'
 	pfilename = new WCHAR [128];
 	StringCchPrintf (pfilename, 128, L"\\application\\re_%s_%s_%s.reg", proot, psubkey, psetting);
@@ -365,21 +383,37 @@ BOOL DeleteRegFile (HKEY hroot, LPCWSTR psubkey, LPCWSTR psetting)
 	WCHAR *proot;
 
 	ok = FALSE;
-
+#ifndef CPP_ELEVEN
 	if (hroot == HKEY_LOCAL_MACHINE)
-		proot = L"HKEY_LOCAL_MACHINE";
+		proot = (WCHAR *) L"HKEY_LOCAL_MACHINE";
 	else if (hroot == HKEY_CURRENT_USER)
-		proot = L"HKEY_CURRENT_USER";
+        proot = (WCHAR *) L"HKEY_CURRENT_USER";
 	else if (hroot == HKEY_CLASSES_ROOT)
-		proot = L"HKEY_CLASSES_ROOT";
+		proot = (WCHAR *) L"HKEY_CLASSES_ROOT";
 	else if (hroot == HKEY_USERS)
-		proot = L"HKEY_USERS";
+		proot = (WCHAR *) L"HKEY_USERS";
 	else
 	{
 		LOG(WARNING) + "Unknown hive: " + (DWORD)hroot;
 		goto Exit;
 	}
-
+#else
+    std::wstring tempwstr;
+    if (hroot == HKEY_LOCAL_MACHINE)
+        tempwstr = (WCHAR *) L"HKEY_LOCAL_MACHINE";
+    else if (hroot == HKEY_CURRENT_USER)
+        tempwstr = (WCHAR *) L"HKEY_CURRENT_USER";
+    else if (hroot == HKEY_CLASSES_ROOT)
+        tempwstr = (WCHAR *) L"HKEY_CLASSES_ROOT";
+    else if (hroot == HKEY_USERS)
+        tempwstr = (WCHAR *) L"HKEY_USERS";
+    else
+    {
+        LOG(WARNING) + "Unknown hive: " + (DWORD)hroot;
+        goto Exit;
+    }
+    proot = const_cast<wchar_t *>(tempwstr.c_str());
+#endif
 	pfilename = new WCHAR [128];
 
 	// Form the 'create' filename, replacing '\' with '_'
@@ -416,21 +450,37 @@ BOOL CreateDeleteRegFile (HKEY hroot, LPCWSTR psubkey, LPCWSTR psetting)
 
 	pfile = NULL;
 	ok = FALSE;
-
+#ifndef CPP_ELEVEN
 	if (hroot == HKEY_LOCAL_MACHINE)
-		proot = L"HKEY_LOCAL_MACHINE";
+		proot = (WCHAR *) L"HKEY_LOCAL_MACHINE";
 	else if (hroot == HKEY_CURRENT_USER)
-		proot = L"HKEY_CURRENT_USER";
+		proot = (WCHAR *) L"HKEY_CURRENT_USER";
 	else if (hroot == HKEY_CLASSES_ROOT)
-		proot = L"HKEY_CLASSES_ROOT";
+		proot = (WCHAR *) L"HKEY_CLASSES_ROOT";
 	else if (hroot == HKEY_USERS)
-		proot = L"HKEY_USERS";
+		proot = (WCHAR *) L"HKEY_USERS";
 	else
 	{
 		LOG(WARNING) + "Unknown hive: " + (DWORD)hroot;
 		goto Exit;
 	}
-
+#else
+    std::wstring tempstr;
+    if (hroot == HKEY_LOCAL_MACHINE)
+        tempstr = (WCHAR *) L"HKEY_LOCAL_MACHINE";
+    else if (hroot == HKEY_CURRENT_USER)
+        tempstr = (WCHAR *) L"HKEY_CURRENT_USER";
+    else if (hroot == HKEY_CLASSES_ROOT)
+        tempstr = (WCHAR *) L"HKEY_CLASSES_ROOT";
+    else if (hroot == HKEY_USERS)
+        tempstr = (WCHAR *) L"HKEY_USERS";
+    else
+    {
+        LOG(WARNING) + "Unknown hive: " + (DWORD)hroot;
+        goto Exit;
+    }
+    proot = const_cast<wchar_t *>(tempstr.c_str());
+#endif
 	// Form the filename, replacing '\' with '_'
 	pfilename = new WCHAR [128];
 	StringCchPrintf (pfilename, 128, L"\\application\\re_%s_%s_%s_delete.reg", proot, psubkey, psetting);

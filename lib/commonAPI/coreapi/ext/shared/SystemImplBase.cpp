@@ -77,12 +77,14 @@ void CSystemImplBase::getPlatform(CMethodResult& oResult)
         oResult.set( L"WP7" );
     else if ( strPlatform.compare("wp8") == 0 )
         oResult.set( L"WP8");
+    else if ( strPlatform.compare("uwp") == 0 )
+        oResult.set( L"UWP");
     else if ( strPlatform.compare("android") == 0 )
         oResult.set( L"ANDROID" );
     else if ( strPlatform.compare("iphone") == 0 )
         oResult.set( L"APPLE" );
     else
-        oResult.set( L"UNKNOWN" );
+        oResult.set( strPlatform );
 
 #else //!RHODES_EMULATOR
 
@@ -93,11 +95,15 @@ void CSystemImplBase::getPlatform(CMethodResult& oResult)
 #elif defined(WINDOWS_PLATFORM)
 #if defined(OS_WP8)
 	oResult.set( PLATFORM_WP8 );
+#elif defined(OS_UWP)
+	oResult.set( PLATFORM_UWP );
 #else
 	oResult.set( PLATFORM_WM_CE );
 #endif
 #elif defined(OS_ANDROID)
     oResult.set( PLATFORM_ANDROID );
+#elif defined(OS_SAILFISH)
+    oResult.set( L"SAILFISH" );
 #elif defined(OS_LINUX)
     oResult.set( L"LINUX" );
 #else
@@ -122,6 +128,11 @@ void CSystemImplBase::getHasCamera(CMethodResult& oResult)
 }
 
 void CSystemImplBase::getPhoneNumber(CMethodResult& oResult)
+{
+    oResult.set(L"");
+}
+
+void CSystemImplBase::getExternalStorageDirectoryPath(CMethodResult& oResult)
 {
     oResult.set(L"");
 }
@@ -156,6 +167,17 @@ void CSystemImplBase::setLocalServerPort( int value, CMethodResult& oResult)
 {
     //Local port can be set only in confuguration file
 }
+
+void CSystemImplBase::getNodejsServerPort(CMethodResult& oResult)
+{
+    oResult.set( atoi(RHODESAPP().getNodeJSListeningPort()) );
+}
+
+void CSystemImplBase::setNodejsServerPort( int value, CMethodResult& oResult)
+{
+    //Local port can be set only in confuguration file
+}
+
 
 void CSystemImplBase::getFreeServerPort(rho::apiGenerator::CMethodResult& oResult)
 {
@@ -225,7 +247,7 @@ void CSystemImplBase::zipFile( const rho::String& localPathToZip,  const rho::St
 {
     ZRESULT res;
 
-#if defined(UNICODE) && defined(WIN32) && !defined(OS_WP8)
+#if defined(UNICODE) && defined(WIN32) && (!defined(OS_WP8) && !defined(OS_UWP))
     rho::StringW strZipFilePathW;
     convertToStringW(localPathToZip.c_str(), strZipFilePathW);
 
@@ -444,6 +466,13 @@ void CSystemImplBase::getMain_window_closed(rho::apiGenerator::CMethodResult& oR
 void CSystemImplBase::hideSplashScreen(rho::apiGenerator::CMethodResult& result)
 {
     //Android only
+}
+
+void CSystemImplBase::getSystemInfo(rho::apiGenerator::CMethodResult& oResult)
+{
+    //Override for specific platform in corresponding subclasses
+       rho::Hashtable<rho::String, rho::String> retVal;
+       oResult.set( retVal );
 }
 
 }

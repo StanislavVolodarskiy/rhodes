@@ -18,6 +18,8 @@
 -(void) setEnablePageLoadingIndication:(BOOL)value methodResult:(id<IMethodResult>)methodResult;
 -(void) getEnableWebPlugins:(id<IMethodResult>)methodResult;
 -(void) setEnableWebPlugins:(BOOL)value methodResult:(id<IMethodResult>)methodResult;
+-(void) getKeyboardDisplayRequiresUserAction:(id<IMethodResult>)methodResult;
+-(void) setKeyboardDisplayRequiresUserAction:(BOOL)keyboardDisplayRequiresUserAction methodResult:(id<IMethodResult>)methodResult;
 -(void) getNavigationTimeout:(id<IMethodResult>)methodResult;
 -(void) setNavigationTimeout:(int)value methodResult:(id<IMethodResult>)methodResult;
 -(void) getScrollTechnique:(id<IMethodResult>)methodResult;
@@ -34,6 +36,8 @@
 -(void) setCacheSize:(int)value methodResult:(id<IMethodResult>)methodResult;
 -(void) getEnableCache:(id<IMethodResult>)methodResult;
 -(void) setEnableCache:(BOOL)value methodResult:(id<IMethodResult>)methodResult;
+-(void) getEnableDragAndDrop:(id<IMethodResult>)methodResult;
+-(void) setEnableDragAndDrop:(BOOL)enableDragAndDrop methodResult:(id<IMethodResult>)methodResult;
 -(void) getAcceptLanguage:(id<IMethodResult>)methodResult;
 -(void) setAcceptLanguage:(NSString*)value methodResult:(id<IMethodResult>)methodResult;
 -(void) getZoomPage:(id<IMethodResult>)methodResult;
@@ -50,6 +54,9 @@
 -(void) active_tab:(id<IMethodResult>)methodResult;
 -(void) full_screen_mode:(BOOL)enable methodResult:(id<IMethodResult>)methodResult;
 -(void) setCookie:(NSString*)url cookie:(NSString*)cookie methodResult:(id<IMethodResult>)methodResult;
+-(void) getCookies:(NSString*)url methodResult:(id<IMethodResult>)methodResult;
+-(void) removeCookie:(NSString*)url name:(NSString*)name methodResult:(id<IMethodResult>)methodResult;
+-(void) removeAllCookies:(id<IMethodResult>)methodResult;
 -(void) save:(NSString*)format path:(NSString*)path tabIndex:(int)tabIndex methodResult:(id<IMethodResult>)methodResult;
 -(void) set_menu_items:(NSDictionary*)menuItems methodResult:(id<IMethodResult>)methodResult;
 

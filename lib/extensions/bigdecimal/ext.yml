@@ -1,0 +1,7 @@
+entry: Init_bigdecimal
+libraries: [ "bigdecimal" ]
+android:
+  exttype: rakefile
+
+project_paths: 
+  uwp: ext/uwp/bigdecimal.vcxproj

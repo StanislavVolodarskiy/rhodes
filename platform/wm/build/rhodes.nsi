@@ -113,6 +113,15 @@ sectionEnd
 section "uninstall"
     SetShellVarContext all
 
+
+    System::Call 'kernel32::OpenMutex(i 0x100000, b 0, t "%APPNAME%") i .R0'
+    IntCmp $R0 0 notRunning
+        System::Call 'kernel32::CloseHandle(i $R0)'
+        MessageBox MB_OK|MB_ICONEXCLAMATION "%APPNAME% is running. Please close it first" /SD IDOK
+        Quit
+
+    notRunning:
+
     # confirmation dialog
     MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to uninstall %APPNAME%?" IDNO NoUninstallLabel
 
@@ -148,6 +157,10 @@ Section %SECTION_NAME% appSection
   File /r "rho"
   File %APP_EXECUTABLE%
   File *.dll
+  File /r *.pak
+  File /r *.qm
+  File /r *.dat
+  File /r *QtWebEngineProcess.exe
 %QT_VSPEC_FILES%  File "icon.ico"
   File "icon.png"
 

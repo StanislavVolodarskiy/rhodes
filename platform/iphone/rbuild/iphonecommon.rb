@@ -24,10 +24,37 @@
 # http://rhomobile.com
 #------------------------------------------------------------------------
 
+require 'logger'
+
+
 class IPhoneBuild
   class << self
+
+      def log(level, msg)
+          if $logger
+              $logger.add(level, msg)
+          else
+              puts msg
+          end
+      end
+
+      def init_logger
+          if $logger.nil?
+              $logger = Logger.new(STDOUT)
+              if ENV["RHODES_BUILD_LOGGER_LEVEL"] and ENV["RHODES_BUILD_LOGGER_LEVEL"] != ""
+                  level = ENV["RHODES_BUILD_LOGGER_LEVEL"]
+                  if level == "DEBUG"
+                      $logger.level = Logger::DEBUG
+                  end
+                  if level == "INFO"
+                      $logger.level = Logger::INFO
+                  end
+              end
+          end
+      end
+
       def process_output(input,options = {})
-        lines = input.encode('UTF-8', :invalid => :replace).split(/\r?\n/) 
+        lines = input.encode('UTF-8', :invalid => :replace).split(/\r?\n/)
         result = []
         lines.each do |data|
           # highligh "error:", "warning:", and "note" messages by adding colored messages
@@ -56,6 +83,7 @@ class IPhoneBuild
       end
 
       def run_and_trace(cmd,args,options = {})
+        init_logger
         if options[:rootdir]
           $rootdir = options[:rootdir]
         else
@@ -64,8 +92,10 @@ class IPhoneBuild
 
         if $rootdir.nil?
           $rootdir = File.expand_path(File.join(File.dirname(__FILE__), '..','..','..'))
-          puts "== iphonecommon.rb: setting $rootdir to #{$rootdir} =="
-        end 
+          log  Logger::DEBUG, "== iphonecommon.rb: setting $rootdir to #{$rootdir} =="
+        end
+
+        log Logger::INFO,  "run CMD: ["+cmd+"] ARGS: ["+args.to_s+"]"
 
         require File.join($rootdir, 'lib','build','jake')
 
@@ -86,18 +116,28 @@ class IPhoneBuild
           BuildOutput.note('Please install xcpretty gem in order to have better formatted xcode output','Build hint')
         end
 
-        if printer.nil?
-          Jake.run2(cmd,args,options) do |line|
-            puts process_output(line)
-            $stdout.flush
-          end
-        else
-          Jake.run2(cmd,args,options) do |line|
-            printer.pretty_print(line)
-            $stdout.flush
-          end
+        output_traces = []
 
+        Jake.run2(cmd,args,options) do |line|
+          output_traces << line
         end
+
+        level = Logger::DEBUG
+
+        if ($?.exitstatus != 0)
+            level = Logger::INFO
+        end
+
+        output_traces.each do |line|
+            if printer.nil?
+                log(level, process_output(line))
+            else
+                if level == Logger::DEBUG
+                    printer.pretty_print(line)
+                end
+            end
+        end
+        $stdout.flush
 
         if $?.exitstatus != 0
           fail "Command '#{cmd}' with args '#{args.join(' ')}' failed with code #{$?.exitstatus}"

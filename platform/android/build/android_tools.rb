@@ -208,7 +208,8 @@ def get_addon_classpath(addon_pattern, apilevel = nil)
     unless found_classpath
       msg = "No Android SDK add-on found: #{addon_pattern}"
       msg += "; API level: #{apilevel}" if apilevel
-      raise msg
+
+      @@logger.warn msg
     end
 
     if USE_TRACES
@@ -248,82 +249,194 @@ def is_device_running
 end
 module_function :is_device_running
 
-def  run_emulator(options = {})
+def avd_path( avdname )
+  File.join(ENV['HOME'], ".android", "avd", "#{avdname}.avd" )
+end
+module_function :avd_path
+
+def patch_avd_config( avdname )
+  config_path = File.join( avd_path( avdname ), 'config.ini' ) 
+
+  patch = ["disk.dataPartition.size=200M",
+          "hw.accelerometer=yes",
+          "hw.audioInput=yes",
+          "hw.battery=yes",
+          "hw.camera.back=none",
+          "hw.camera.front=none",
+          "hw.dPad=no",
+          "hw.device.manufacturer=Google",
+          "hw.device.name=Nexus 6",
+          "hw.gps=yes",
+          "hw.gpu.enabled=yes",
+          "hw.keyboard=yes",
+          "hw.mainKeys=no",
+          "hw.sensors.orientation=yes",
+          "hw.sensors.proximity=yes",
+          "hw.trackBall=no"
+        ]
+
+  begin
+    File.open( config_path, 'a' ) do |file|
+      patch.each do |line|
+        file.puts line
+      end
+    end
+  rescue Exception => e
+    p "Error patching AVD config file: #{config_path}"
+    pp e
+  end
+end
+module_function :patch_avd_config
+
+def create_avd( avdname, apilevel, abi, use_google_apis )
+  @@logger.info "Creating new AVD. Name: #{avdname}; API level: #{apilevel}; ABI: #{abi}"
+  @@logger.info "Emulator params: #{$androidtargets[apilevel].inspect}"
+
+  s_apis = use_google_apis ? "google_apis" : "default"
+  avdmanager = File.join($androidsdkpath,'tools','bin','avdmanager')
+
+  target = $androidtargets[apilevel]
+  targetid = target[:id] if target
+  createavd = "echo no | \"#{$androidbin}\" create avd --name #{avdname} --target #{targetid} --abi #{s_apis}/#{abi} --sdcard 512M"    
+  @@logger.info "Creating AVD image old style: #{createavd}"
+
+  out, err, wait_thr = Jake.run_with_output(createavd)
+
+  @@logger.info "AVD create output:\n#{out}"
+  @@logger.warn "AVD create errors:\n#{err}" unless err.strip.empty?
+
+  unless ( err.strip.empty? and wait_thr.value.success? )
+    createavd = "echo no | \"#{avdmanager}\" --verbose create avd --name #{avdname} --package \"system-images;android-#{apilevel};#{s_apis};#{abi}\" --sdcard 512M"
+    @@logger.warn "Creating AVD failed. Will try new style: #{createavd}"
+    %x[#{createavd}]
+    raise "Can't create AVD" unless $?.success?
+  end
+  patch_avd_config( avdname )
+end
+module_function :create_avd
+
+def get_installed_images_apilevels
+  levels = []
+  Dir.glob( File.join( $androidsdkpath, 'system-images', '*' ) ) { |d| 
+    l = File.basename(d).match(/android-(\d+)/)[1].to_i
+    levels << l
+  }
+  levels
+end
+module_function :get_installed_images_apilevels
+
+def get_avd_image_real_abi( apilevel, abi, use_google_apis)
+  @@logger.debug "get_avd_image_real_abi: #{apilevel}, #{abi}, #{use_google_apis}"
+
+  s_apis = use_google_apis ? "google_apis" : "default"
+  Dir.glob( File.join( $androidsdkpath, 'system-images', "android-#{apilevel}", s_apis, '*' ) ) { |dir|
+    @@logger.debug "looking at: #{dir}"
+    targetabi = File.basename(dir)
+    return targetabi if targetabi =~ /#{abi}/
+  }
+  nil
+end
+module_function :get_avd_image_real_abi
+
+def get_avd_image( apilevel, abis, use_google_apis )
+  @@logger.debug "get_avd_image: #{apilevel}, #{abis.inspect}, #{use_google_apis}"
+  i = abis.index('x86')
+  (abis[0],abis[i] = abis[i],abis[0]) if i #will look for x86 first
+  abis.each do |abi|
+    realabi = get_avd_image_real_abi(apilevel,abi,use_google_apis)
+    return realabi, use_google_apis if realabi
+    realabi = get_avd_image_real_abi(apilevel,abi,true) unless use_google_apis
+    return realabi, true if realabi
+  end  
+  nil
+end
+module_function :get_avd_image
+
+def find_suitable_avd_image( apilevel, abis, use_google_apis )
+  @@logger.debug "Android targets:\n#{pp $androidtargets}"
+
+  if apilevel
+    realabi = get_avd_image( apilevel, abis, use_google_apis )
+    return apilevel, realabi if realabi
+  end
+
+  @@logger.info "Can't find exact AVD image for requested API: #{apilevel}, ABIs: #{abis}, Google APIs: #{use_google_apis}. Will try something else."
+
+  $androidtargets.keys().reverse_each do |apilevel|
+    realabi, use_google = get_avd_image(apilevel,abis,use_google_apis)
+    return apilevel, realabi, use_google if realabi
+  end
+
+  @@logger.info "Can't find AVD image with installed platforms; will scan actual images available"
+
+  platforms = get_installed_images_apilevels
+  i = platforms.index(apilevel)
+  (platforms[0],platforms[i] = platforms[i],platforms[0]) if i
+
+  @@logger.debug "will iterate through platforms: #{pp platforms}"
+
+  platforms.each do |apilevel|
+    realabi, use_google = get_avd_image(apilevel,abis,use_google_apis)
+    return apilevel, realabi, use_google if realabi
+  end
+
+  return nil,nil
+end
+module_function :find_suitable_avd_image
+
+#return path to effective AVD - existion or newly created
+def prepare_avd(avdname, emuversion, abis, use_google_apis)
+
+  @@logger.debug "prepare_avd: #{avdname}, v#{emuversion}, #{abis.inspect}, g:#{use_google_apis}"
+  @@logger.debug "versions: #{pp $market_versions}"
+  @@logger.debug "targets: #{pp $androidtargets}"
+
+  unless avdname
+    avdname = "rhoAndroid" + $emuversion.gsub(/[^0-9]/, "")
+    avdname += "google" if $use_google_addon_api
+  end
+
+  #replace whitespaces in AVD name with underscores
+  avdname.tr!(' ', '_');
+
+  @@logger.debug "Will try to find AVD: #{avdname}"
+
+  unless File.directory?( avd_path(avdname) )
+
+    @@logger.debug "AVD #{avdname} is not found, will try to find image and create a new one"
+
+    apilevel, abi, use_google_apis = find_suitable_avd_image( apilevel, abis, use_google_apis)
+
+    raise "Can't find suitable emulator image for requested parameters: API Level: #{apilevel}; Allowed ABIs: #{abis.inspect}; Google APIs: #{use_google_apis}" unless ( apilevel and abi )
+
+    avdname = "rhoAndroid#{apilevel}"
+    avdname += "google" if $use_google_addon_api
+
+    unless File.directory?( avd_path(avdname) )
+      create_avd(avdname,apilevel,abi,use_google_apis)
+    end
+  end      
+
+  avdname
+end
+module_function :prepare_avd
+
+def run_emulator(options = {})
   system("\"#{$adb}\" start-server")
 
   unless is_emulator_running
     puts "Need to start emulator" if USE_TRACES
 
-    if $appavdname
-      $avdname = $appavdname
-    else
-      $avdname = "rhoAndroid" + $emuversion.gsub(/[^0-9]/, "")
-      $avdname += "google" if $use_google_addon_api
-      #$avdname += "motosol" if $use_motosol_api
-    end
-
-    puts $androidtargets.inspect
-
-    raise "Target platform for Android #{$emuversion} is not installed. Please, install corresponding packages in Android SDK Manager or correct build.yml values." if $androidtargets[get_api_level($emuversion)].nil?
-
-    targetid = $androidtargets[get_api_level($emuversion)][:id]
-
-    puts "Using Android SDK target: #{$androidtargets[get_api_level($emuversion)].inspect}" if USE_TRACES
-
-    abi = nil
-    sdk_abis = $androidtargets[get_api_level($emuversion)][:abis]
-
-    if sdk_abis            
-      if $abis.include?("x86")
-        #first look for x86 abis
-        sdk_abis.each do |cur_abi|
-          if cur_abi =~ /x86/
-            abi = cur_abi 
-            break
-          end
-        end
-      end
-
-      unless abi
-        sdk_abis.each do |cur_abi|
-          if cur_abi =~ /armeabi/
-            abi = cur_abi
-            break
-          end
-        end
-      end
-
-      raise "Emulator image is not found for selected target: #{$androidtargets[get_api_level($emuversion)][:abis].inspect}" unless abi
-    end
-
-    unless File.directory?( File.join(ENV['HOME'], ".android", "avd", "#{$avdname}.avd" ) )
-      puts "Emulator API level: #{get_api_level($emuversion)}"
-      puts "Emulator params: #{$androidtargets[get_api_level($emuversion)].inspect}"
-      if USE_TRACES
-        puts "AVD name: #{$avdname}, emulator version: #{$emuversion}, target id: #{targetid}"
-      end
-      raise "Unable to create AVD image. No appropriate target API for SDK version: #{$emuversion}" unless targetid
-      createavd = "echo no | \"#{$androidbin}\" create avd --name #{$avdname} --target #{targetid} --sdcard 128M"
-      createavd = createavd + " --abi #{abi}" if abi
-      puts "Creating AVD image: #{createavd}"
-      IO.popen(createavd, 'r+') do |io|
-        io.puts "\n"
-        while line = io.gets
-          puts line
-        end
-      end
-
-    else
-      raise "Unable to run Android emulator. No appropriate target API for SDK version: #{$emuversion}" unless targetid
-    end
+    avdname = prepare_avd( $appavdname, $emuversion, $abis, $use_google_addon_api )
 
     # Start the emulator, check on it every 5 seconds until it's running
     cmd = "\"#{$emulator}\""
     cmd << " -no-window" if options[:hidden]
-    cmd << " -avd #{$avdname}"
+    cmd << " -avd #{avdname}"
     cmd << " -wipe-data" if options[:wipe]
     # cmd << " -verbose"
 
+    puts cmd
     start_emulator(cmd)
 
     cmd_start_emu = "#{$adb} -e wait-for-device shell getprop sys.boot_completed"
@@ -398,11 +511,12 @@ module_function :run_application
 
 def application_running(device_flag, pkgname)
   pkg = pkgname.gsub(/\./, '\.')
+  is_run = false
   system("\"#{$adb}\" start-server")
   `"#{$adb}" #{device_options(device_flag).join(' ')} shell ps`.split.each do |line|
-    return true if line =~ /#{pkg}/
+    is_run = true if line =~ /#{pkg}/
   end
-  false
+  return is_run
 end
 module_function :application_running
 
@@ -417,12 +531,12 @@ def load_app_and_run(device_flag, apkfile, pkgname)
     device_id = device_flag
   end
 
-  puts "Loading package..."
+  @@logger.info "Loading package..."
 
   argv = [$adb] + device_options(device_flag)
   argv << 'install'
   argv << '-r'
-  argv << apkfile
+  argv << "#{Jake.enquote apkfile}"
 
   cmd = argv.join(' ')
 
@@ -430,46 +544,52 @@ def load_app_and_run(device_flag, apkfile, pkgname)
   done = false
   child = nil
   while count < 20
-    theoutput = ""
+    poutres = ""
+    perrres = ""
     begin
-      status = Timeout::timeout(300) do
-        puts "CMD: #{cmd}"
+      status = Timeout::timeout(600) do
+        @@logger.debug "CMD: #{cmd}"
+
         Open3.popen3(cmd) do |pin,pout,perr,wait_thr|
           child = pout.pid
-          while line = perr.gets
-            theoutput << line
-            puts "RET: #{line}"
+          while line = pout.gets
+            poutres << line
+            @@logger.debug "POUT RET: #{line}"
           end
+
+          while line = perr.gets
+            perrres << line
+            @@logger.debug "PERR RET: #{line}"
+          end
+
         end
       end
     rescue Timeout::Error
+      @@logger.error "Timeout error, killing #{child}"
+
       Process.kill 9, child if child
-      if theoutput == ""
-        puts "Timeout reached while empty output: killing adb server and retrying..."
+      if (poutres == "") and (perrres == "")
+        @@logger.error "Timeout reached while empty output: killing adb server and retrying..."
         `#{$adb} kill-server`
         count += 1
         sleep 1
         next
       else
-        puts "Timeout reached: try to run application"
+        @@logger.error "Timeout reached: try to run application"
         done = true
         break
       end
     end
 
-    if theoutput.to_s.match(/Success/)
+    @@logger.info( "Upload output: #{poutres.to_s}")
+    @@logger.info( "Upload error output: #{perrres.to_s}")
+
+    if poutres.to_s.match(/Success/) or perrres.to_s.match(/Success/)
       done = true
       break
     end
-
-    if theoutput.to_s.match(/INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES/)
-      raise "Inconsistent certificates: please, uninstall application signed with another sertificate from #{device} first"
-    end
-    if theoutput.to_s.match(/INSTALL_FAILED_MISSING_SHARED_LIBRARY/)
-      raise "Missing shared library: application is not compatible with #{device} due to lack of required libraries"
-    end
-
-    puts "Failed to load (possibly because emulator/device is still offline) - retrying"
+    
+    @@logger.error "Failed to load (possibly because emulator/device is still offline) - retrying"
     $stdout.flush
     sleep 1
     count += 1
@@ -620,7 +740,8 @@ def logcat_process(filter = nil, device_flag = '-e', log_path = $applog_path)
     if log_pids.empty?
       puts 'Starting new logcat process'
       data = process_filter(filter).join(' ')
-      Thread.new { system("\"#{$adb}\" #{device_opts.join(' ')} logcat #{data} > \"#{log_path}\" ") }
+      pid = spawn("\"#{$adb}\" #{device_opts.join(' ')} logcat #{data} > \"#{log_path}\" ")
+      Process.detach(pid)
     end
   end
 end
@@ -646,6 +767,145 @@ def read_manifest_package(path)
 end
 module_function :read_manifest_package
 
+
+  def self.jarsigner= v
+    @@jarsigner=v
+  end
+
+  def self.zipalign= v
+    @@zipalign=v
+  end
+
+  def self.keytool= v
+    @@keytool=v
+  end
+
+  def self.logger= v
+    @@logger=v
+  end
+
+  def signApk( inputApk, outputApk, keystore, keypass, storepass, storealias  )
+    @@logger.info "Signing APK file"
+
+    args = []
+    args << "-sigalg"
+    args << "MD5withRSA"
+    args << "-digestalg"
+    args << "SHA1"
+    args << "-verbose"
+    args << "-keystore"
+    args << keystore
+    args << "-storepass"
+    args << storepass
+    args << "-signedjar"
+    args << outputApk
+    args << inputApk
+    args << storealias if storealias
+    
+    Jake.run2(@@jarsigner, args, :hide_output => !USE_TRACES )
+    unless $?.success?
+      @@logger.error "Error running jarsigner"
+      exit 1
+    end
+  end
+  module_function :signApk
+
+  def signApkDebug( inputApk, outputApk )
+    @@logger.info "Align Debug APK file"
+
+    keystore = File.join(Dir.home,'/.android/debug.keystore')
+    #Try to find debug keystore in another location
+    if ENV['USERPROFILE']
+      keystore = File.join(ENV['USERPROFILE'],'/.android/debug.keystore') unless File.file?(keystore)
+    end
+
+    raise "Can't find debug keystore in user's home folder" unless File.file?(keystore)
+
+    signApk( inputApk, outputApk, keystore, 'android', 'android', 'androiddebugkey' )
+  end
+  module_function :signApkDebug
+
+  def alignApk( inputApk, outputApk )
+    args = []
+    args << "-f"
+    args << "-v"
+    args << "4"
+    args << inputApk
+    args << outputApk
+    out = Jake.run2(@@zipalign, args, :hide_output => !USE_TRACES )
+    puts out if USE_TRACES
+    unless $?.success?
+      @@logger.error "Error running zipalign"
+      exit 1
+    end
+  end
+  module_function :alignApk
+
+  def generateKeystore( keystore, storealias, storepass, keypass )
+    @@logger.info "Generating private keystore..."
+    
+    mkdir_p File.dirname($keystore) unless File.directory? File.dirname($keystore)
+
+    args = []
+    args << "-genkey"
+    args << "-alias"
+    args << storealias
+    args << "-keyalg"
+    args << "RSA"
+    args << "-validity"
+    args << "20000"
+    args << "-keystore"
+    args << keystore
+    args << "-storepass"
+    args << storepass
+    args << "-keypass"
+    args << keypass
+    Jake.run(@@keytool, args)
+    unless $?.success?
+      @@logger.error "Error generating keystore file"
+      exit 1
+    end
+  end
+  module_function :generateKeystore
+
+  def findSdkLibJar(sdk_root)
+    libdir = File.join(sdk_root, 'tools', 'lib' )
+    libpattern = 'sdklib*.jar'
+    sdklibjar = File.join(libdir,'sdklib.jar')
+
+    sdklibversion = [0,0,0]
+
+    Dir.glob( File.join( libdir, libpattern )).each do |lib|
+
+      fname = File.basename( lib, '.jar' )
+
+      @@logger.debug("Parsing version for: #{fname}")
+
+      m = fname.match(/^.*-(\d+)\.(\d+).(\d+)/)
+      next unless m
+      
+      version = m.captures
+
+      $logger.debug "Parsed version for #{lib}: #{version[0]}.#{version[1]}.#{version[2]}"
+
+      version.each_with_index do |d,i|
+        if d && (d.to_i > sdklibversion[i])
+          sdklibversion = [version[0].to_i,version[1].to_i,version[2].to_i]
+          sdklibjar = lib
+          break
+        end
+      end
+    end
+
+    raise "Could not find sdklib*.jar: #{sdklibjar}" unless File.file?(sdklibjar)
+
+    @@logger.info "Using SDK library: #{sdklibjar}"
+
+    sdklibjar
+  end
+  module_function :findSdkLibJar
+
+
 end #module AndroidTools
 
 def start_emulator(cmd)
@@ -659,7 +919,7 @@ def start_emulator(cmd)
 
     # wait while emulator appears in adb device list
     30.times do
-      sleep 1
+      sleep 5
       out = Jake.run4("#{$adb} devices")
       lines = out.chomp.split("\n");
       return if lines.length > 1
@@ -687,4 +947,3 @@ def stop_emulator
     Jake.run3_dont_fail('killall -9 emulator 2> /dev/null')
   end
 end
-

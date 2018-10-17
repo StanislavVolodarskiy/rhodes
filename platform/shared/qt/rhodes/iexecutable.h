@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QThread>
 #include <QDebug>
+#include "mainwindowinterface.h"
 
 class IExecutable : public QObject
 {
@@ -14,8 +15,17 @@ public:
         //setParent(parent);
         connect(parent, SIGNAL(destroyed(QObject*)), this, SLOT(deleteLater()));
         connect(this, SIGNAL(run()), this, SLOT(execute()), Qt::QueuedConnection);
+#ifdef RHODES_MAC_BUILD
+        qDebug() << "Creating Executable in thred ID 0x" + QString::number((quint64)QThread::currentThreadId(), 16);
+#else
         qDebug() << "Creating Executable in thred ID 0x" + QString::number((quint32)QThread::currentThreadId(), 16);
+#endif
     }
+
+    static QtMainWindow * getMainWindow(){
+        return QtMainWindow::getLastInstance();
+    }
+
     virtual ~IExecutable(){}
 
 signals:

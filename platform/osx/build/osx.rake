@@ -1,18 +1,18 @@
 #------------------------------------------------------------------------
 # (The MIT License)
-# 
+#
 # Copyright (c) 2008-2011 Rhomobile, Inc.
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -20,16 +20,16 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-# 
+#
 # http://rhomobile.com
 #------------------------------------------------------------------------
 
 namespace "config" do
-  
+
   task :set_osx_platform do
     $current_platform = "osx" unless $current_platform
   end
-  
+
   task :osx => [:set_osx_platform, "config:common"] do
     $make = "make"
     $name_tool = "install_name_tool"
@@ -62,7 +62,7 @@ namespace "build" do
         ENV["ARCHS"] = "x86_64 -g -gdwarf-2 -Xarch_x86_64 -mmacosx-version-min=10.5 -DRHODES_EMULATOR"
         ENV["RHO_ROOT"] = $startdir
         ENV["RHO_QMAKE"] = $qmake
-        ENV['RHO_QMAKE_SPEC'] = 'macx-g++'
+        ENV['RHO_QMAKE_SPEC'] = 'macx-clang'
         ENV['RHO_QMAKE_VARS'] = $rhosimulator_build ? 'RHOSIMULATOR_BUILD=1' : ''
 
         ENV["XCODEBUILD"] = $xcodebuild
@@ -78,7 +78,7 @@ namespace "build" do
                     $extensions_lib << " -l#{ext}"
                     $pre_targetdeps << " ../../../osx/bin/extensions/lib#{ext}.a"
                 end
-                Jake.run3('./build', extpath)
+                Jake.run3('./build', extpath, {}, true)
             end
         end
     end
@@ -101,7 +101,9 @@ PRE_TARGETDEPS += #{$pre_targetdeps}
         end
 
         app_path = File.join( $build_dir, 'RhoSimulator/RhoSimulator.app' )
-        Jake.run3("#{$remove} -Rf #{app_path}")
+        if File.exists? app_path
+          Jake.run3("#{$remove} -Rf #{app_path}", nil, {}, true)
+        end
 
         File.open(File.join($startdir, 'platform/shared/qt/rhodes/resources/Info.plist'), "wb") do |fversion|
             fversion.write( %{<?xml version="1.0" encoding="UTF-8"?>
@@ -113,7 +115,7 @@ PRE_TARGETDEPS += #{$pre_targetdeps}
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleGetInfoString</key>
-	<string>RhoSimulator #{$rhodes_version}, Copyright 2010-2016 Symbol Technologies LLC.</string>
+	<string>RhoSimulator #{$rhodes_version}, Copyright 2017 Tau Technologies.</string>
 	<key>CFBundleSignature</key>
 	<string>@TYPEINFO@</string>
 	<key>CFBundleExecutable</key>
@@ -125,12 +127,12 @@ PRE_TARGETDEPS += #{$pre_targetdeps}
 })
         end
 
-        qmake = "#{$qmake} -o Makefile -r -spec macx-g++ RhoSimulator.pro RHOSIMULATOR_BUILD=1"
-        Jake.run3(qmake                        , $qt_project_dir)
-        #Jake.run3("#{$make} clean"             , $qt_project_dir)
-        Jake.run3("#{$make} all"               , $qt_project_dir)
-        Jake.run3("#{$macdeployqt} #{app_path}", $qt_project_dir)
-        #Jake.run3("#{$make} clean"             , $qt_project_dir)
+        qmake = "#{$qmake} -o Makefile -r -spec macx-clang RhoSimulator.pro RHOSIMULATOR_BUILD=1"
+        Jake.run3(qmake                        , $qt_project_dir, {}, false)
+        #Jake.run3("#{$make} clean"             , $qt_project_dir, {}, false)
+        Jake.run3("#{$make} all"               , $qt_project_dir, {}, false)
+        Jake.run3("#{$macdeployqt} #{app_path}", $qt_project_dir, {}, false)
+        #Jake.run3("#{$make} clean"             , $qt_project_dir, {}, true)
     end
   end
 end
@@ -139,4 +141,10 @@ namespace "clean" do
   task :osx => ["config:rhosimulator", "config:set_osx_platform", "config:osx"] do
     rm_rf File.join($startdir, 'platform/osx/bin')
   end
+  namespace "osx" do
+      task :rhosimulator do
+        rhoSimDir = File.join( $build_dir, 'RhoSimulator/RhoSimulator.app' )
+        FileUtils.rm_rf("#{rhoSimDir}/.", secure: true)
+      end
+    end
 end

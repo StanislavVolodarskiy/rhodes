@@ -39,6 +39,7 @@ class CRhoCryptImpl : public IRhoCrypt
 	unsigned char *  m_dbKeyData;
     int32_t   m_dwLastError;
     String    m_strDBPartition;
+    uint64_t currentKeySize;
 
 public:
     CRhoCryptImpl(void);
@@ -54,8 +55,15 @@ private:
     void initContext(const char* szPartition);
 
 	void generateNewKey();
+    
+    void readKeyFromStorageOld();
+    void writeKeyToStorageOld();
+
+    void readKeyFromStorageNew();
+    void writeKeyToStorageNew();
+
     void readKeyFromStorage();
-    void writeKeyToStorage();
+    
 };
 
 }

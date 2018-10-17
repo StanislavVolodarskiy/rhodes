@@ -32,14 +32,19 @@
 # undef UNICODE
 #elif defined(_WINRT_DLL) || defined(_WP8_LIB)
 #define OS_WP8
+#elif defined(_WINRT_DLL) || defined(_UWP_LIB)
+#define OS_UWP
 #elif defined(_WIN32_WCE)
 # define OS_WINCE _WIN32_WINCE
 #elif defined(WIN32)
 # define OS_WINDOWS_DESKTOP
 #elif defined(__CYGWIN__) || defined(__CYGWIN32__)
 # define OS_CYGWIN
+#elif defined(__ANDROID__) || defined(ANDROID)
+#define OS_ANDROID
 #elif defined(linux) || defined(__linux) || defined(__linux__)
 # define OS_LINUX
+# define OS_SAILFISH
 #elif defined(macintosh) || defined(__APPLE__) || defined(__APPLE_CC__)
 # define OS_MACOSX
 #elif defined(__FreeBSD__)
@@ -47,7 +52,7 @@
 #else
 #endif
 
-#if defined(OS_WINDOWS_DESKTOP) || defined(OS_WINCE) || defined(OS_WP8)
+#if defined(OS_WINDOWS_DESKTOP) || defined(OS_WINCE) || defined(OS_WP8)|| defined(OS_UWP)
 // 0 - win32 desktop, 1 - wm, 2 - mot ce
 extern int winversion;
 
@@ -139,14 +144,18 @@ typedef int LogSeverity;
 #define RHO_RB_EXT ".rb"
 #define RHO_ERB_EXT ".erb"
 #define RHO_EMULATOR_DIR "rhosimulator"
+#define RHO_ENCRYPTED_EXT ".encrypted"
 #else
 #define RHO_RB_EXT ".iseq"
+#define RHO_ENCRYPTED_EXT ".encrypted"
 #define RHO_ERB_EXT "_erb.iseq"
 #define RHO_EMULATOR_DIR ""
 #endif
 
+#ifndef RHO_RUBY_COMPILER
 #include "common/app_build_capabilities.h"
 #include "common/app_build_configs.h"
+#endif
 
 #if defined(RHO_NO_RUBY)
 #define RHO_NO_RUBY_API

@@ -30,6 +30,7 @@ require File.dirname(__FILE__) + '/maven_deps_extractor.rb'
 require File.dirname(__FILE__) + '/manifest_generator.rb'
 require File.dirname(__FILE__) + '/eclipse_project_generator.rb'
 require File.dirname(__FILE__) + '/android_studio_project_generator.rb'
+require File.dirname(__FILE__) + '/android_debug.rb'
 require File.dirname(__FILE__) + '/../../../lib/build/BuildConfig'
 load File.dirname(__FILE__) + '/android-repack.rake'
 require 'pathname'
@@ -54,7 +55,8 @@ JAVA_PACKAGE_NAME = 'com.rhomobile.rhodes'
 # For complete list of android API levels and its mapping to
 # market names (such as "Android-1.5" etc) see output of
 # command "android list targets"
-ANDROID_SDK_LEVEL = 9
+ANDROID_MIN_SDK_LEVEL = 19
+ANDROID_SDK_LEVEL = 26
 
 ANDROID_PERMISSIONS = {
     'audio' => ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS'],
@@ -80,63 +82,63 @@ def set_app_icon_android
 
   res_path = File.join($app_path, 'resources', 'android', 'res')
   if File.exists? res_path
-     # NEW resource - just copy it to res folder
-     puts "add resources from application'sresource folder [#{res_path}] to [#{$tmpdir}]"
-     cp_r res_path, $tmpdir
+    # NEW resource - just copy it to res folder
+    puts "add resources from application'sresource folder [#{res_path}] to [#{$tmpdir}]"
+    cp_r res_path, $tmpdir
 
   else
-     # NEW resources not found - use old mechanism
+    # NEW resources not found - use old mechanism
 
-      iconappbase = File.join $app_path, 'icon', 'icon'
+    iconappbase = File.join $app_path, 'icon', 'icon'
 
-      {'drawable' => '',
-       'drawable-ldpi' => '36',
-       'drawable-mdpi' => '48',
-       'drawable-hdpi' => '72',
-       'drawable-xhdpi' => '96',
-       'drawable-xxhdpi' => '144',
-       'drawable-xxxhdpi' => '192',
-       'mipmap' => '',
-       'mipmap-ldpi' => '36',
-       'mipmap-mdpi' => '48',
-       'mipmap-hdpi' => '72',
-       'mipmap-xhdpi' => '96',
-       'mipmap-xxhdpi' => '144',
-       'mipmap-xxxhdpi' => '192'
-        }.each do |folder, size|
-        drawable = File.join $appres, folder
-        iconresname = File.join(drawable, "icon.png")
+    {'drawable' => '',
+     'drawable-ldpi' => '36',
+     'drawable-mdpi' => '48',
+     'drawable-hdpi' => '72',
+     'drawable-xhdpi' => '96',
+     'drawable-xxhdpi' => '144',
+     'drawable-xxxhdpi' => '192',
+     'mipmap' => '',
+     'mipmap-ldpi' => '36',
+     'mipmap-mdpi' => '48',
+     'mipmap-hdpi' => '72',
+     'mipmap-xhdpi' => '96',
+     'mipmap-xxhdpi' => '144',
+     'mipmap-xxxhdpi' => '192'
+    }.each do |folder, size|
+      drawable = File.join $appres, folder
+      iconresname = File.join(drawable, "icon.png")
 
-        iconapppath = iconappbase + size + '.png'
+      iconapppath = iconappbase + size + '.png'
 
-        if File.exists?(iconapppath) or File.exists?(iconresname)
-            iconapppath = iconappbase + '.png' unless File.exists? iconapppath
-            rm_f iconresname
-            mkdir_p drawable
-            cp iconapppath, iconresname if File.exist? drawable
-        end
+      if File.exists?(iconapppath) or File.exists?(iconresname)
+        iconapppath = iconappbase + '.png' unless File.exists? iconapppath
+        rm_f iconresname
+        mkdir_p drawable
+        cp iconapppath, iconresname if File.exist? drawable
       end
+    end
 
-      {'drawable' => '',
-       'drawable-ldpi' => '18',
-       'drawable-mdpi' => '24',
-       'drawable-hdpi' => '36',
-       'drawable-xhdpi' => '48',
-       'drawable-xxhdpi' => '72',
-       'drawable-xxxhdpi' => '96'
-       }.each do |folder, size|
-        drawable = File.join $appres, folder
-        iconresname = File.join(drawable, "ic_notification.png")
+    {'drawable' => '',
+     'drawable-ldpi' => '18',
+     'drawable-mdpi' => '24',
+     'drawable-hdpi' => '36',
+     'drawable-xhdpi' => '48',
+     'drawable-xxhdpi' => '72',
+     'drawable-xxxhdpi' => '96'
+    }.each do |folder, size|
+      drawable = File.join $appres, folder
+      iconresname = File.join(drawable, "ic_notification.png")
 
-        iconapppath = iconappbase + size + '.png'
+      iconapppath = iconappbase + size + '.png'
 
-        if File.exists?(iconapppath) or File.exists?(iconresname)
-            iconapppath = iconappbase + '.png' unless File.exists? iconapppath
-            rm_f iconresname
-            mkdir_p drawable
-            cp iconapppath, iconresname if File.exist? drawable
-        end
+      if File.exists?(iconapppath) or File.exists?(iconresname)
+        iconapppath = iconappbase + '.png' unless File.exists? iconapppath
+        rm_f iconresname
+        mkdir_p drawable
+        cp iconapppath, iconresname if File.exist? drawable
       end
+    end
   end
 end
 
@@ -158,6 +160,57 @@ end
 def get_boolean(arg)
   arg == 'true' or arg == 'yes' or arg == 'enabled' or arg == 'enable' or arg == '1'
 end
+
+namespace 'debug' do
+  namespace 'android' do
+
+    debug_port = ""
+    device_type = ""
+
+    if !$app_config.nil? && !$app_config["android"].nil?
+      debug_port = $app_config["android"]["debug_port"]
+      device_type = $app_config["android"]["target_debug"]
+    end
+
+    task :gdbserver => ['config:android'] do
+      debugger = AndroidDebug.new($app_package_name, $app_path, debug_port, 7777, device_type)
+      debugger.StartGdbServer
+    end
+
+    task :gdb => ['config:android'] do
+      debugger = AndroidDebug.new($app_package_name, $app_path, debug_port, 7777, device_type)
+      gdb_path = File.join($androidndkpath, "prebuilt", "windows-x86_64", "bin", "gdb")
+      debugger.StartGdb(gdb_path)
+    end
+
+    task :jdb => ['config:android'] do
+      debugger = AndroidDebug.new($app_package_name, $app_path, debug_port, 7777, device_type)
+      debugger.StartJdb
+    end
+
+    task :appdebug => ['config:android'] do
+      debugger = AndroidDebug.new($app_package_name, $app_path, debug_port, 7777, device_type)
+      debugger.StartAppOnDebug
+    end
+
+    task :run_and_debug => ['config:android'] do
+      gdb_path = File.join($androidndkpath, "prebuilt", "windows-x86_64", "bin", "gdb")
+      debugger = AndroidDebug.new($app_package_name, $app_path, debug_port, 7777, device_type)
+      debugger.StartAppOnDebug
+      debugger.StartGdbServer
+      debugger.StartGdb(gdb_path)
+    end
+
+    task :attach => ['config:android'] do
+      gdb_path = File.join($androidndkpath, "prebuilt", "windows-x86_64", "bin", "gdb")
+      debugger = AndroidDebug.new($app_package_name, $app_path, debug_port, 7777, device_type)
+      debugger.StartGdbServer
+      debugger.StartGdb(gdb_path)
+    end
+
+  end
+end
+
 
 namespace 'project' do
   namespace 'android' do
@@ -196,7 +249,7 @@ namespace 'project' do
           while line = f.gets
             line.chomp!
             next if line.empty?
-            
+
             src = File.join(extpath, line)
             if src =~ /(.*\/src\/).*/
               src = $1
@@ -233,7 +286,6 @@ namespace 'project' do
 
       project_template_path = File.join 'res','generators','templates','project','android_studio_project'
 
-
       main_gradle_script = File.join( project_template_path, 'build.gradle' )
       gradle_properties = File.join( project_template_path, 'gradle.properties' )
       gradlew = File.join( project_template_path, 'gradlew' )
@@ -241,6 +293,49 @@ namespace 'project' do
       settings_gradle = File.join( project_template_path, 'settings.gradle' )
       app_gradle_template = File.join( project_template_path, 'app', 'build.gradle.erb' )
       project_path = File.join $app_path,'project','android_studio'
+      project_app_path = File.join $app_path,'project','android_studio', 'app'
+
+      cmake_template_path = File.join( project_template_path, 'app', 'CMakeLists.txt.erb' )
+      cmake_template_ruby = File.join( $shareddir, 'ruby', 'CMakeLists.txt.erb')
+      cmake_template_curl = File.join( $shareddir, 'curl', 'CMakeLists.txt.erb')
+      cmake_template_db = File.join( $shareddir, 'db', 'CMakeLists.txt.erb')
+      cmake_template_common = File.join( $shareddir, 'common', 'CMakeLists.txt.erb')
+      cmake_template_logging = File.join( $shareddir, 'logging', 'CMakeLists.txt.erb')
+      cmake_template_sync = File.join( $shareddir, 'sync', 'CMakeLists.txt.erb')
+      cmake_template_json = File.join( $shareddir, 'json.new', 'CMakeLists.txt.erb')
+      cmake_template_sqlite = File.join( $shareddir, 'sqlite', 'CMakeLists.txt.erb')
+      cmake_template_rhodes = File.join('platform', 'android', 'build', 'CMakeLists.txt.erb')
+
+      $abis = $app_config['android']['abis'] if $app_config["android"]
+      $abis = ['arm'] unless $abis
+      abi = $abis[0]
+
+      if abi == 'arm'
+        realabi = 'armeabi'
+        studio_realabi = 'armeabi-v7a'
+      else
+        realabi = abi
+        studio_realabi = abi
+      end
+
+      external_string = ''
+      ext_libs = ''
+      extlibs = Dir.glob(File.join($app_builddir, 'extensions', '**', realabi, 'lib*.a'))
+      extlibs.each do |lib|
+
+        extname = File.basename(lib).gsub('lib', '').gsub('.a', '')
+        external_string += ("add_library(#{extname} STATIC IMPORTED GLOBAL)\n" +
+            "set_property(TARGET #{extname} PROPERTY IMPORTED_LOCATION #{lib})\n")
+        if extname == "coreapi"
+          next
+        end
+        ext_libs += ("#{extname}\n")
+      end
+      ext_libs += 'coreapi'
+
+
+
+      cpp_stub_path = File.join( project_template_path, 'app', 'stub.cpp' )
 
       rhodes_path = File.absolute_path '.'
 
@@ -248,16 +343,51 @@ namespace 'project' do
       generator.rhoRoot = rhodes_path
       generator.buildToolsVersion = $build_tools_ver
       generator.applicationId = $app_package_name
-      generator.minSdkVersion = $min_sdk_level
-      generator.targetSdkVersion = 12
+      generator.targetSdkVersion = $found_api_level
+      generator.minSdkVersion = $found_api_level
+      generator.appincdir = $appincdir
+      generator.buildMode = $debug ? 'Debug' : 'Release'
+      generator.externalDeps = external_string
+      generator.extLibs = ext_libs
+      generator.targetArch = studio_realabi
+
       generator.compileSdkVersion = $found_api_level
       generator.versionName = $app_config["version"]
 
-
       mkdir_p File.join(project_path,'app')
+      mkdir_p File.join(project_app_path,'curl')
+      mkdir_p File.join(project_app_path,'rhodb')
+      mkdir_p File.join(project_app_path,'rhocommon')
+      mkdir_p File.join(project_app_path,'rhosync')
+      mkdir_p File.join(project_app_path,'sqlite')
+      mkdir_p File.join(project_app_path,'ruby')
+      mkdir_p File.join(project_app_path,'json')
+      mkdir_p File.join(project_app_path,'rholog')
+      mkdir_p File.join(project_app_path,'rhodes')
 
       app_gradle_path = File.join( project_path, 'app', 'build.gradle')
+      cmake_path_main = File.join( project_path, 'app', 'CMakeLists.txt')
+      cmake_path_ruby = File.join( project_path, 'app', 'ruby', 'CMakeLists.txt')
+      cmake_path_curl = File.join( project_path, 'app', 'curl', 'CMakeLists.txt')
+      cmake_path_rhodb = File.join( project_path, 'app', 'rhodb', 'CMakeLists.txt')
+      cmake_path_rhocommon = File.join( project_path, 'app', 'rhocommon', 'CMakeLists.txt')
+      cmake_path_rhosync = File.join( project_path, 'app', 'rhosync', 'CMakeLists.txt')
+      cmake_path_sqlite = File.join( project_path, 'app', 'sqlite', 'CMakeLists.txt')
+      cmake_path_json = File.join( project_path, 'app', 'json', 'CMakeLists.txt')
+      cmake_path_rholog = File.join( project_path, 'app', 'rholog', 'CMakeLists.txt')
+      cmake_path_rhodes = File.join( project_path, 'app', 'rhodes', 'CMakeLists.txt')
+
       File.open( app_gradle_path, 'w' ) { |f| f.write generator.render_app_gradle( app_gradle_template ) }
+      File.open( cmake_path_main, 'w' ) { |f| f.write generator.render_app_gradle( cmake_template_path ) }
+      File.open( cmake_path_ruby, 'w' ) { |f| f.write generator.render_app_gradle( cmake_template_ruby ) }
+      File.open( cmake_path_curl, 'w' ) { |f| f.write generator.render_app_gradle( cmake_template_curl ) }
+      File.open( cmake_path_rhodb, 'w' ) { |f| f.write generator.render_app_gradle( cmake_template_db ) }
+      File.open( cmake_path_rhocommon, 'w' ) { |f| f.write generator.render_app_gradle( cmake_template_common ) }
+      File.open( cmake_path_rhosync, 'w' ) { |f| f.write generator.render_app_gradle( cmake_template_sync ) }
+      File.open( cmake_path_sqlite, 'w' ) { |f| f.write generator.render_app_gradle( cmake_template_sqlite ) }
+      File.open( cmake_path_json, 'w' ) { |f| f.write generator.render_app_gradle( cmake_template_json ) }
+      File.open( cmake_path_rholog, 'w' ) { |f| f.write generator.render_app_gradle( cmake_template_logging ) }
+      File.open( cmake_path_rhodes, 'w' ) { |f| f.write generator.render_app_gradle( cmake_template_rhodes ) }
 
       cp main_gradle_script,  project_path
       cp gradle_properties,   project_path
@@ -286,7 +416,7 @@ def find_file(file_name, path_array)
       search_paths = [path_array]
     end
 
-    search_paths.each do |elem| 
+    search_paths.each do |elem|
       full_path = (elem.kind_of?(String)) ? elem : File.join(elem)
 
       files = Dir.glob(File.join(full_path, file_name))
@@ -343,6 +473,7 @@ namespace "config" do
 
     $java = $config["env"]["paths"]["java"]
 
+    $skip_so_build = false
     $neon_root = nil
     $neon_root = $config["env"]["paths"]["neon"] unless $config["env"]["paths"].nil?
     if !($app_config["paths"].nil? or $app_config["paths"]["neon"].nil?)
@@ -372,7 +503,13 @@ namespace "config" do
     $min_sdk_level = $app_config["android"]["minSDK"] unless $app_config["android"].nil?
     $min_sdk_level = $config["android"]["minSDK"] if $min_sdk_level.nil? and not $config["android"].nil?
     $min_sdk_level = $min_sdk_level.to_i unless $min_sdk_level.nil?
-    $min_sdk_level = ANDROID_SDK_LEVEL if $min_sdk_level.nil?
+    $min_sdk_level = ANDROID_MIN_SDK_LEVEL if $min_sdk_level.nil?
+
+
+    $target_sdk_level = $app_config["android"]["targetSDK"] unless $app_config["android"].nil?
+    $target_sdk_level = $config["android"]["targetSDK"] if $target_sdk_level.nil? and not $config["android"].nil?
+    $target_sdk_level = $target_sdk_level.to_i unless $target_sdk_level.nil?
+    $target_sdk_level = ANDROID_SDK_LEVEL if $target_sdk_level.nil?
 
     $max_sdk_level = $app_config["android"]["maxSDK"] unless $app_config["android"].nil?
 
@@ -385,14 +522,25 @@ namespace "config" do
 
       android_api_levels = AndroidTools.get_installed_api_levels
       android_api_levels.sort!
+
+      puts "Installed versions: "
+      puts AndroidTools.get_installed_market_versions
+      
       $found_api_level = android_api_levels.last
 
       #If user has mentioned version under android, then select that particular api level.
       if $app_config["android"]["version"]
         apilevel = AndroidTools.get_api_level $app_config["android"]["version"]
+        if(!apilevel)
+          apilevel = AndroidTools.get_api_level ($app_config["android"]["version"] + ".0")
+        end
+        if(!apilevel)
+          apilevel = AndroidTools.get_api_level ($app_config["android"]["version"][0...-2])
+        end
         if(apilevel)
           $androidplatform = AndroidTools.get_platform apilevel
           $found_api_level = apilevel
+          puts "Found api level #{apilevel}"
         else
           puts "No Android platform found of version #{$app_config['android']['version']}. Picking the latest one Android #{AndroidTools.get_market_version $found_api_level} available in machine"
         end
@@ -445,7 +593,7 @@ namespace "config" do
 
     $rhomanifesterb = File.join($app_path, $app_config['android']['manifest_template']) unless $app_config["android"].nil? || $app_config['android']['manifest_template'].nil?
     $rhomanifesterb = File.join $androidpath, "Rhodes", "AndroidManifest.xml.erb" if $rhomanifesterb.nil?
-    
+
     $appmanifest = File.join $tmpdir, "AndroidManifest.xml"
 
     $rhores = File.join $androidpath, 'Rhodes','res'
@@ -482,8 +630,10 @@ namespace "config" do
       # TODO: add ruby executable for Linux
     end
 
-    m = AndroidTools::MavenDepsExtractor.instance.set_temp_dir($tmpdir)
-    m = AndroidTools::MavenDepsExtractor.instance.set_java_home($java)
+    AndroidTools::MavenDepsExtractor.instance.set_logger($logger)
+    AndroidTools::MavenDepsExtractor.instance.set_temp_dir($tmpdir)
+    AndroidTools::MavenDepsExtractor.instance.set_java_home($java)
+
 
     build_tools_path = nil
 
@@ -491,7 +641,7 @@ namespace "config" do
       if File.exist?(File.join($androidsdkpath, "build-tools"))
 
 
-        
+
         toolsver = $app_config['android']['buildtools'] if ($app_config['android'] and $app_config['android']['buildtools'])
 
         if toolsver
@@ -541,22 +691,21 @@ namespace "config" do
 
       $androidbin = File.join($androidsdkpath, "tools", "android" + $bat_ext)
       $adb = find_file( "adb" + $exe_ext,
-        [
-          [$androidsdkpath, "tools"],
-          [$androidsdkpath, "platform-tools"]
-        ]
+                        [
+                            [$androidsdkpath, "tools"],
+                            [$androidsdkpath, "platform-tools"]
+                        ]
       )
 
       $zipalign = find_file( "zipalign" + $exe_ext,
-        [
-          [$androidsdkpath, "tools"],
-          [build_tools_path],
-          [$androidsdkpath,'build-tools','*']
-        ]
+                             [
+                                 [$androidsdkpath, "tools"],
+                                 [build_tools_path],
+                                 [$androidsdkpath,'build-tools','*']
+                             ]
       )
 
       $androidjar = File.join($androidsdkpath, "platforms", $androidplatform, "android.jar")
-      $sdklibjar = File.join($androidsdkpath, 'tools', 'lib', 'sdklib.jar')
 
       $keytool = File.join($java, "keytool" + $exe_ext)
       $jarsigner = File.join($java, "jarsigner" + $exe_ext)
@@ -581,6 +730,12 @@ namespace "config" do
 
       $build_tools_ver = File.split( build_tools_path )[1]
 
+      AndroidTools.logger = $logger
+      AndroidTools.jarsigner = $jarsigner
+      AndroidTools.zipalign = $zipalign
+      AndroidTools.keytool = $keytool
+
+      $sdklibjar = AndroidTools.findSdkLibJar $androidsdkpath
     end
 
     $app_config["capabilities"] += ANDROID_CAPS_ALWAYS_ENABLED
@@ -631,7 +786,7 @@ namespace "config" do
         $google_classpath = AndroidTools::get_addon_classpath('Google APIs', $found_api_level)
       end
 
-      AndroidTools::MavenDepsExtractor.instance.add_dependency('com.android.support:support-v4:23.0.0')
+      AndroidTools::MavenDepsExtractor.instance.add_dependency('com.android.support:support-v4:25.2.0')
 
       #setup_ndk($androidndkpath, $found_api_level, 'arm')
       $abis = $app_config['android']['abis'] if $app_config["android"]
@@ -652,6 +807,8 @@ namespace "config" do
     $libname = {}
     $native_libs.each do |x|
       $objdir[x] = File.join($tmpdir, x)
+
+      #TODO: path is actually incorrect since library build splits it to dirname and basename inserting ABI in between. Not touching it right now not wanting to break things, but need to review/fix it eventually.
       $libname[x] = File.join($app_builddir, x, "lib#{x}.a")
     end
 
@@ -672,25 +829,35 @@ namespace "config" do
       apilevel = nil
       target_name = nil
 
-      `"#{$androidbin}" list targets`.split(/\n/).each do |line|
+      $logger.debug "Parsing 'list target' output"
+
+      `"#{$androidbin}" list target`.split(/\n/).each do |line|
         line.chomp!
+
+        $logger.debug "parsing line: #{line}"
 
         if line =~ /^id:\s+([0-9]+)\s+or\s+\"(.*)\"/
           id = $1
           target_name = $2
 
+          $logger.debug "found target. ID: #{id}; name: #{target_name}"
+
           if $use_google_addon_api
+            $logger.debug "checking if target is applcable for Google API"
             if line =~ /Google Inc\.:Google APIs:([0-9]+)/
               apilevel = $1.to_i
               $androidtargets[apilevel] = {:id => id.to_i, :name => target_name}
+              $logger.debug "adding target #{id} for Google API"
             end
           end
         end
 
         unless $use_google_addon_api
+          $logger.debug "checking if target is applcable for non-Google API"
           if line =~ /^\s+API\s+level:\s+([0-9]+)$/
             apilevel = $1.to_i
             $androidtargets[apilevel] = {:id => id.to_i, :name => target_name}
+            $logger.debug "adding target #{id} for non-Google API"
           end
         end
 
@@ -700,15 +867,12 @@ namespace "config" do
             $2.split(/,\s*/).each do |abi|
               $androidtargets[apilevel][:abis] << abi
             end
-            puts $androidtargets[apilevel][:abis].inspect if USE_TRACES
+            $logger.debug "added target abis: #{pp $androidtargets[apilevel][:abis].inspect}"
           end
         end
       end
 
-      if USE_TRACES
-        puts "Android targets:"
-        puts $androidtargets.inspect
-      end
+      $logger.debug "Android targets:\n#{pp $androidtargets.inspect}"
 
     end
 
@@ -728,11 +892,11 @@ namespace "config" do
     # just after build config has been read and before processing extensions
     task :app_config do
       if $app_config['capabilities'].index('push')
-        $app_config['extensions'] << 'gcm-push' unless $app_config['extensions'].index('gcm-push')
+        $app_config['extensions'] << 'gcm-push' unless $app_config['extensions'].index('gcm-push') || $app_config['extensions'].index('fcm-push')
       end
 
       if !$app_config['android'].nil? && !$app_config['android']['abis'].nil? && ($app_config['android']['abis'].index('x86') || $app_config['android']['abis'].index('mips'))
-        $app_config['extensions'].delete('rhoelements')          
+        $app_config['extensions'].delete('rhoelements')
       end
 
       $file_map_name = "rho.dat"
@@ -753,206 +917,209 @@ namespace "config" do
       $ext_android_platform_lib = []
 
       $app_extensions_list.each do |ext, extpath|
-            next if extpath.nil?
+        next if extpath.nil?
 
-            puts "#{extpath} is configuring..."
-            extyml = File.join(extpath, "ext.yml")
-            if File.file? extyml
-              puts "#{extyml} is processing..."
+        puts "#{extpath} is configuring..."
+        extyml = File.join(extpath, "ext.yml")
+        if File.file? extyml
+          puts "#{extyml} is processing..."
 
-              print_timestamp(' extension "'+ext+'" processing START')
+          print_timestamp(' extension "'+ext+'" processing START')
 
 
-              extconf = Jake.config(File.open(extyml))
-              extconf_android = extconf['android']
-              exttype = 'build'
-              exttype = extconf_android['exttype'] if extconf_android and extconf_android['exttype']
-              targetpath = File.join $app_builddir, 'extensions', ext
-              addspath = File.join targetpath,'adds'
-              prebuiltpath = nil
-              if exttype == 'prebuilt'
-                prebuiltpath = Dir.glob(File.join(extpath,'ext','**', 'android'))
-                if prebuiltpath.count == 1
-                  prebuiltpath = prebuiltpath.first
-                else
-                  raise "android:exttype is 'prebuilt' but prebuilt path is not found #{prebuiltpath.inspect}"
-                end
-              end
-
-              android_listener = extconf["android_rhodes_activity_listener"]
-              android_listener = extconf_android['rhodes_listener'] if android_listener.nil? and extconf_android
-              $ext_android_rhodes_activity_listener << android_listener unless android_listener.nil?
-
-              manifest_changes = extconf["android_manifest_changes"]
-              manifest_changes = extconf_android['manifest_changes'] if manifest_changes.nil? and extconf_android
-
-              prebuild_rake_task = extconf_android['prebuild_rake_task'] if extconf_android
-
-              if manifest_changes
-                manifest_changes = [manifest_changes] unless manifest_changes.is_a? Array
-                manifest_changes.map! { |path| File.join(extpath,path) }
-              else
-                if prebuiltpath
-                  manifest_changes = []
-
-                  path = File.join(prebuiltpath, 'adds', 'AndroidManifest.rb')
-                  manifest_changes << path if File.file? path
-
-                  templates = Dir.glob File.join(prebuiltpath, 'adds', '*.erb')
-                  manifest_changes += templates
-
-                  if templates.empty?
-                    path = File.join(prebuiltpath, 'adds', 'AndroidManifest.xml')
-                    manifest_changes << path if File.file? path
-                  end
-                end
-              end
-              if manifest_changes
-                $ext_android_manifest_changes[ext] = manifest_changes
-              end
-
-              resource_addons = extconf["android_resources_addons"]
-              resource_addons = extconf_android['adds'] if resource_addons.nil? and extconf_android
-              if resource_addons
-                resource_addons = File.join(extpath, resource_addons)
-              else
-                if prebuiltpath
-                  resource_addons = File.join(prebuiltpath, 'adds')
-                  resource_addons = nil unless File.directory? resource_addons
-                end
-              end
-
-              if resource_addons
-                $ext_android_adds[ext] = resource_addons
-              end
-
-              library_deps = extconf_android['library_deps'] if extconf_android
-              if library_deps
-                if library_deps.is_a? Array
-                  library_deps.each do |dep|
-                    deppath = File.join($androidsdkpath, dep)
-                    $ext_android_library_deps[AndroidTools.read_manifest_package(deppath)] = deppath
-                  end
-                end
-              end
-
-              maven_deps = extconf_android['maven_deps'] if extconf_android
-              if maven_deps
-                if maven_deps.is_a? Array
-                  maven_deps.each do |dep|
-                    AndroidTools::MavenDepsExtractor.instance.add_dependency( ext, dep )
-                  end
-                end
-              end
-
-              resource_packages = extconf_android['resource_packages'] if extconf_android
-              if resource_packages
-                if resource_packages.is_a? Array
-                  resource_packages.each do |package|
-                    $ext_android_library_deps[package] = ""
-                  end
-                end
-              end
-
-              additional_sources = extconf["android_additional_sources_list"]
-              additional_sources = extconf_android['source_list'] if additional_sources.nil? and extconf_android
-              unless additional_sources.nil?
-                ext_sources_list = File.join(extpath, additional_sources)
-
-                if File.exists? ext_sources_list
-                  $ext_android_additional_sources[extpath] = ext_sources_list
-                else
-                  raise "Extension java source list is missed: #{ext_sources_list}"
-                end
-              else
-                puts "No additional java sources for '#{ext}'"
-              end
-              
-              sdk_addons = extconf_android['sdk_addons'] if extconf_android
-              unless sdk_addons.nil?
-                ext_classpath = nil
-                sdk_addons.each do |addon_pat|
-                  if ext_classpath
-                    ext_classpath += $path_separator + AndroidTools::get_addon_classpath(addon_pat)
-                  else
-                    ext_classpath = AndroidTools::get_addon_classpath(addon_pat)
-                  end
-                end
-                $ext_android_extra_classpath[ext] = ext_classpath
-              end
-
-              # there is no 'additional_libs' param in android section moreover
-              # place libraries into android adds folder
-              android_additional_lib = extconf["android_additional_lib"]
-              if android_additional_lib != nil
-                android_additional_lib.each do |lib|
-                  $ext_android_additional_lib << File.join(extpath, lib)
-                end
-              end
-              
-              android_platform_libs = nil
-              android_platform_libs = extconf_android['platform_libraries'] if extconf_android
-              if android_platform_libs
-                android_platform_libs.each { |lib| $ext_android_platform_lib << lib }
-              end
-
-              if prebuiltpath
-                mkdir_p targetpath
-                Dir.glob(File.join(prebuiltpath,'**','lib*.a')).each do |lib|
-                  arch = File.basename(File.dirname(lib))
-                  libdirpath = File.join(targetpath,arch)
-                  mkdir_p libdirpath unless File.directory?(libdirpath)
-                  Jake.copyIfNeeded lib, libdirpath
-                end
-                Dir.glob(File.join(prebuiltpath, '*.jar')).each do |lib|
-                  Jake.copyIfNeeded lib, targetpath
-                end
-                libdirpath = nil
-                Dir.glob(File.join(prebuiltpath, '**', 'lib*.so')).each do |lib|
-                  next if lib =~ /adds/
-                  arch = File.basename(File.dirname(lib))
-                  if lib =~ /noautoload/
-                    libdirpath = File.join(targetpath,'noautoload','lib',arch)
-                  else
-                    libdirpath = File.join(targetpath,'lib',arch)
-                  end
-                  mkdir_p libdirpath unless File.directory? libdirpath
-                  Jake.copyIfNeeded lib, libdirpath
-                end
-              end
-
-              puts "#{extyml} is processed"
-              print_timestamp(' extension "'+ext+'" processing FINISH')
-
+          extconf = Jake.config(File.open(extyml))
+          extconf_android = extconf['android']
+          exttype = 'build'
+          exttype = extconf_android['exttype'] if extconf_android and extconf_android['exttype']
+          targetpath = File.join $app_builddir, 'extensions', ext
+          addspath = File.join targetpath,'adds'
+          prebuiltpath = nil
+          if exttype == 'prebuilt'
+            prebuiltpath = Dir.glob(File.join(extpath,'ext','**', 'android'))
+            if prebuiltpath.count == 1
+              prebuiltpath = prebuiltpath.first
+            else
+              raise "android:exttype is 'prebuilt' but prebuilt path is not found #{prebuiltpath.inspect}"
             end
+          elsif extconf_android['prebuilts']
+            prebuiltpath = File.join( extpath, extconf_android['prebuilts'] )            
+          end
 
-            if exttype == 'rakefile'
-              rakepath = Dir.glob File.join(extpath,'**','android','Rakefile')
-              if rakepath.size == 1
-                rakepath = File.dirname(rakepath.first)
-              else
-                rakepath = extpath
-              end
-              $ext_android_build_scripts[ext] = [rakepath, 'rake']
+          android_listener = extconf["android_rhodes_activity_listener"]
+          android_listener = extconf_android['rhodes_listener'] if android_listener.nil? and extconf_android
+          $ext_android_rhodes_activity_listener << android_listener unless android_listener.nil?
 
-              if prebuild_rake_task                
-                args = [ prebuild_rake_task ]
-                args << '--trace' if USE_TRACES
-                cc_run( 'rake', args, rakepath, true, setup_ext_env( extpath, ext ) ) or raise "Extension prebuild failed: #{extpath}"
-              end
+          manifest_changes = extconf["android_manifest_changes"]
+          manifest_changes = extconf_android['manifest_changes'] if manifest_changes.nil? and extconf_android
 
-            elsif exttype != 'prebuilt'
-              build_script = File.join(extpath,'ext','build'+$bat_ext)
-              if File.exists? build_script
-                if RUBY_PLATFORM =~ /(win|w)32$/
-                  $ext_android_build_scripts[ext] = [File.join(extpath,'ext'),'build.bat']
-                else
-                  $ext_android_build_scripts[ext] = [File.join(extpath,'ext'), File.join('.', 'build' + $bat_ext)]
-                end
+          prebuild_rake_task = extconf_android['prebuild_rake_task'] if extconf_android
+
+          if manifest_changes
+            manifest_changes = [manifest_changes] unless manifest_changes.is_a? Array
+            manifest_changes.map! { |path| File.join(extpath,path) }
+          else
+            if prebuiltpath
+              manifest_changes = []
+
+              path = File.join(prebuiltpath, 'adds', 'AndroidManifest.rb')
+              manifest_changes << path if File.file? path
+
+              templates = Dir.glob File.join(prebuiltpath, 'adds', '*.erb')
+              manifest_changes += templates
+
+              if templates.empty?
+                path = File.join(prebuiltpath, 'adds', 'AndroidManifest.xml')
+                manifest_changes << path if File.file? path
               end
             end
+          end
+          if manifest_changes
+            $ext_android_manifest_changes[ext] = manifest_changes
+          end
 
-            puts "#{extpath} is configured"
+          resource_addons = extconf["android_resources_addons"]
+          resource_addons = extconf_android['adds'] if resource_addons.nil? and extconf_android
+          if resource_addons
+            resource_addons = File.join(extpath, resource_addons)
+          else
+            if prebuiltpath
+              resource_addons = File.join(prebuiltpath, 'adds')
+              resource_addons = nil unless File.directory? resource_addons
+            end
+          end
+
+          if resource_addons
+            $ext_android_adds[ext] = resource_addons
+          end
+
+          library_deps = extconf_android['library_deps'] if extconf_android
+          if library_deps
+            if library_deps.is_a? Array
+              library_deps.each do |dep|
+                deppath = File.join($androidsdkpath, dep)
+                $ext_android_library_deps[AndroidTools.read_manifest_package(deppath)] = deppath
+              end
+            end
+          end
+
+          maven_deps = extconf_android['maven_deps'] if extconf_android
+          if maven_deps
+            if maven_deps.is_a? Array
+              maven_deps.each do |dep|
+                AndroidTools::MavenDepsExtractor.instance.add_dependency( ext, dep )
+              end
+            end
+          end
+
+          resource_packages = extconf_android['resource_packages'] if extconf_android
+          if resource_packages
+            if resource_packages.is_a? Array
+              resource_packages.each do |package|
+                $ext_android_library_deps[package] = ""
+              end
+            end
+          end
+
+          additional_sources = extconf["android_additional_sources_list"]
+          additional_sources = extconf_android['source_list'] if additional_sources.nil? and extconf_android
+          unless additional_sources.nil?
+            ext_sources_list = File.join(extpath, additional_sources)
+
+            if File.exists? ext_sources_list
+              $ext_android_additional_sources[extpath] = ext_sources_list
+            else
+              raise "Extension java source list is missed: #{ext_sources_list}"
+            end
+          else
+            puts "No additional java sources for '#{ext}'"
+          end
+
+          sdk_addons = extconf_android['sdk_addons'] if extconf_android
+          unless sdk_addons.nil?
+            ext_classpath = nil
+            sdk_addons.each do |addon_pat|
+              if ext_classpath
+                ext_classpath += $path_separator + AndroidTools::get_addon_classpath(addon_pat)
+              else
+                ext_classpath = AndroidTools::get_addon_classpath(addon_pat)
+              end
+            end
+            $ext_android_extra_classpath[ext] = ext_classpath
+          end
+
+          # there is no 'additional_libs' param in android section moreover
+          # place libraries into android adds folder
+          android_additional_lib = extconf["android_additional_lib"]
+          if android_additional_lib != nil
+            android_additional_lib.each do |lib|
+              $ext_android_additional_lib << File.join(extpath, lib)
+            end
+          end
+
+          android_platform_libs = nil
+          android_platform_libs = extconf_android['platform_libraries'] if extconf_android
+          if android_platform_libs
+            android_platform_libs.each { |lib| $ext_android_platform_lib << lib }
+          end
+
+          if prebuiltpath
+            mkdir_p targetpath
+            Dir.glob(File.join(prebuiltpath,'**','lib*.a')).each do |lib|
+              arch = File.basename(File.dirname(lib))
+              libdirpath = File.join(targetpath,arch)
+              mkdir_p libdirpath unless File.directory?(libdirpath)
+              Jake.copyIfNeeded lib, libdirpath
+            end
+            Dir.glob(File.join(prebuiltpath, '*.jar')).each do |lib|
+              Jake.copyIfNeeded lib, targetpath
+            end
+            libdirpath = nil
+            Dir.glob(File.join(prebuiltpath, '**', 'lib*.so')).each do |lib|
+              next if lib =~ /adds/
+              arch = File.basename(File.dirname(lib))
+
+              if lib =~ /noautoload/
+                libdirpath = File.join(targetpath,'noautoload','lib',arch)
+              else
+                libdirpath = File.join(targetpath,'lib',arch)
+              end
+              mkdir_p libdirpath unless File.directory? libdirpath
+              Jake.copyIfNeeded lib, libdirpath
+            end
+          end
+
+          puts "#{extyml} is processed"
+          print_timestamp(' extension "'+ext+'" processing FINISH')
+
+        end
+
+        if exttype == 'rakefile'
+          rakepath = Dir.glob File.join(extpath,'**','android','Rakefile')
+          if rakepath.size == 1
+            rakepath = File.dirname(rakepath.first)
+          else
+            rakepath = extpath
+          end
+          $ext_android_build_scripts[ext] = [rakepath, 'rake']
+
+          if prebuild_rake_task
+            args = [ prebuild_rake_task ]
+            args << '--trace' if USE_TRACES
+            cc_run( 'rake', args, rakepath, true, setup_ext_env( extpath, ext ) ) or raise "Extension prebuild failed: #{extpath}"
+          end
+
+        elsif exttype != 'prebuilt'
+          build_script = File.join(extpath,'ext','build'+$bat_ext)
+          if File.exists? build_script
+            if RUBY_PLATFORM =~ /(win|w)32$/
+              $ext_android_build_scripts[ext] = [File.join(extpath,'ext'),'build.bat']
+            else
+              $ext_android_build_scripts[ext] = [File.join(extpath,'ext'), File.join('.', 'build' + $bat_ext)]
+            end
+          end
+        end
+
+        puts "#{extpath} is configured"
       end # $app_extensions_list.each
 
       puts "Extensions' java source lists: #{$ext_android_additional_sources.inspect}"
@@ -982,13 +1149,13 @@ namespace "config" do
       end
 
       $emuversion = AndroidTools.get_market_version($min_sdk_level) if $emuversion.nil?
+      $emuversion = AndroidTools.get_market_version(AndroidTools.get_installed_api_levels[-1]) if $emuversion.nil? #last chance
+
       if $emuversion.nil?
         raise "Wrong Android emulator version: #{$emuversion}. Android SDK target API is not installed"
       end
 
-      if USE_TRACES
-        puts "Android emulator version: #{$emuversion}"
-      end
+      $logger.info "Configuring emulator for version: #{$emuversion}"
 
       $emuversion = $emuversion.to_s
 
@@ -1061,11 +1228,13 @@ namespace "build" do
       ENV["NEON_ROOT"] = $neon_root unless $neon_root.nil?
       ENV["CONFIG_XML"] = $config_xml unless $config_xml.nil?
       ENV["RHO_DEBUG"] = $debug.to_s
+      ENV["CUSTOM_FCM_SENDER_ID"] = $app_config["android"]["fcmSenderID"] unless $app_config["android"].nil?
+      ENV["CUSTOM_FCM_APPLICATION_ID"] = $app_config["android"]["fcmAppID"] unless $app_config["android"].nil?
 
       $ext_android_build_scripts.each do |ext, builddata|
-        
+
         puts "Building #{ext}: #{builddata.inspect}"
-        
+
         ENV['SOURCEPATH'] = builddata[0]
         sourcelist = Dir.glob(File.join(builddata[0],'**','android','ext_native.files'))
         ENV['SOURCELIST'] = sourcelist.size == 1 ? sourcelist.first : File.join(builddata[0],'ext_native.files')
@@ -1074,19 +1243,19 @@ namespace "build" do
         ENV['TARGETLIB'] = "lib#{ext}.a"
         ENV['TEMP_FILES_DIR'] = File.join($tmpdir, ext)
         buildargs = ['-Iext/platform/android/generated/jni',
-            '-Iext/shared',
-            '-Iext/shared/include',
-            "-I\"#{$startdir}/platform/android/Rhodes/jni/include\"",
-            "-I\"#{$startdir}/platform/android/Rhodes/jni/include/rhodes/details\"",
-            "-I\"#{$startdir}/platform/shared/ruby/include\"",
-            "-I\"#{$startdir}/platform/shared\"",
-            "-I\"#{$startdir}/platform/shared/common\"",
-            "-I\"#{$startdir}/platform/shared/api_generator\"",
-            "-I\"#{$commonapidir}/coreapi/ext/shared\"",
-            "-I\"#{$appincdir}\"",
-            "-I\"#{$startdir}/platform/shared/ruby\"",
-            "-I\"#{$startdir}/platform/shared/ruby/android\"",
-            "-I\"#{$startdir}/platform/shared/ruby/generated\""]
+                     '-Iext/shared',
+                     '-Iext/shared/include',
+                     "-I\"#{$startdir}/platform/android/Rhodes/jni/include\"",
+                     "-I\"#{$startdir}/platform/android/Rhodes/jni/include/rhodes/details\"",
+                     "-I\"#{$startdir}/platform/shared/ruby/include\"",
+                     "-I\"#{$startdir}/platform/shared\"",
+                     "-I\"#{$startdir}/platform/shared/common\"",
+                     "-I\"#{$startdir}/platform/shared/api_generator\"",
+                     "-I\"#{$commonapidir}/coreapi/ext/shared\"",
+                     "-I\"#{$appincdir}\"",
+                     "-I\"#{$startdir}/platform/shared/ruby\"",
+                     "-I\"#{$startdir}/platform/shared/ruby/android\"",
+                     "-I\"#{$startdir}/platform/shared/ruby/generated\""]
         ENV['BUILDARGS'] = buildargs.join(' ')
 
         mkdir_p ENV["TARGET_TEMP_DIR"] unless File.directory? ENV["TARGET_TEMP_DIR"]
@@ -1095,18 +1264,19 @@ namespace "build" do
         $abis.each do |abi|
           puts "Build extension (#{abi}): #{ext}"
           if RUBY_PLATFORM =~ /(win|w)32$/ || (builddata[1] == 'rake')
-            
+
             args = []
             if builddata[1] == 'rake'
               args << "arch:#{abi}"
+              args << "-m"
               if !File.file?(File.join(builddata[0],'Rakefile'))
                 args << "-f"
                 args << "\"#{File.join($startdir,'platform','android','build','Rakefile')}\""
               end
               args << '--trace' if USE_TRACES
             end
-            
-            cc_run(builddata[1], args, builddata[0], false) or raise "Extension build failed: #{builddata[0]}"
+
+            cc_run(builddata[1], args, builddata[0], false, nil, USE_TRACES) or raise "Extension build failed: #{builddata[0]}"
           else
             currentdir = Dir.pwd()
             Dir.chdir builddata[0]
@@ -1148,14 +1318,14 @@ namespace "build" do
       end
       $ext_android_library_deps.each do |package, path|
         next if path.nil? or path == ''
-        
+
         puts "Library resources: #{path}"
 
         res = File.join path, 'res'
         assets = File.join path, 'assets'
         packagepath = File.join $app_builddir,'extensions',package
         addspath = File.join packagepath,'adds'
-        
+
         Dir.glob(File.join(res,'**','*.*')) do |p|
           unless File.directory? p
             rel_path = p.gsub path, ''
@@ -1167,9 +1337,9 @@ namespace "build" do
             Jake.copyIfNeeded p, target
           end
         end
-      #  cp_r res, addspath if File.directory? res
+        #  cp_r res, addspath if File.directory? res
         cp_r assets, addspath if File.directory? assets
-        
+
         Dir.glob(File.join(path,'**','*.jar')) do |jar|
           mkdir_p packagepath
           cp jar, packagepath
@@ -1201,11 +1371,12 @@ namespace "build" do
       ENV['TARGETLIB'] = File.basename($libname["sqlite"])
       ENV['TEMP_FILES_DIR'] = $objdir["sqlite"]
       ENV['BUILDARGS'] = args.join(' ')
-    
+
       $abis.each do |abi|
         args = ['-f', "\"#{File.join($builddir,'Rakefile')}\"", "arch:#{abi}"]
+        args << '-m'
         args << '--trace' if USE_TRACES
-        cc_run('rake', args, nil, false) or raise "Build failed: sqlite"
+        cc_run('rake', args, nil, false, nil, USE_TRACES) or raise "Build failed: sqlite"
       end
       print_timestamp('build:android:libsqlite FINISH')
     end
@@ -1244,11 +1415,12 @@ namespace "build" do
       ENV['TARGETLIB'] = File.basename($libname["curl"])
       ENV['TEMP_FILES_DIR'] = $objdir["curl"]
       ENV['BUILDARGS'] = args.join(' ')
-    
+
       $abis.each do |abi|
         args = ['-f', "\"#{File.join($builddir,'Rakefile')}\"", "arch:#{abi}"]
+        args << '-m'
         args << '--trace' if USE_TRACES
-        cc_run('rake', args, nil, false) or raise "Build failed: curl"
+        cc_run('rake', args, nil, false, nil, USE_TRACES) or raise "Build failed: curl"
       end
       print_timestamp('build:android:libcurl FINISH')
     end
@@ -1264,6 +1436,7 @@ namespace "build" do
       mkdir_p libdir unless File.directory? libdir
 
       args = []
+      args << "-DRUBY_EXPORT"
       args << "-Wno-uninitialized"
       args << "-Wno-missing-field-initializers"
       args << '-Wno-shadow'
@@ -1284,11 +1457,12 @@ namespace "build" do
       ENV['TARGETLIB'] = File.basename($libname["ruby"])
       ENV['TEMP_FILES_DIR'] = $objdir["ruby"]
       ENV['BUILDARGS'] = args.join(' ')
-    
+
       $abis.each do |abi|
         args = ['-f', "\"#{File.join($builddir,'Rakefile')}\"", "arch:#{abi}"]
+        args << '-m'
         args << '--trace' if USE_TRACES
-        cc_run('rake', args, nil, false) or raise "Build failed: ruby"
+        cc_run('rake', args, nil, false, nil, USE_TRACES) or raise "Build failed: ruby"
       end
       print_timestamp('build:android:libruby FINISH')
     end
@@ -1317,11 +1491,12 @@ namespace "build" do
       ENV['TARGETLIB'] = File.basename($libname["json"])
       ENV['TEMP_FILES_DIR'] = $objdir["json"]
       ENV['BUILDARGS'] = args.join(' ')
-    
+
       $abis.each do |abi|
         args = ['-f', "\"#{File.join($builddir,'Rakefile')}\"", "arch:#{abi}"]
+        args << '-m'
         args << '--trace' if USE_TRACES
-        cc_run('rake', args, nil, false) or raise "Build failed: json"
+        cc_run('rake', args, nil, false, nil, USE_TRACES) or raise "Build failed: json"
       end
       print_timestamp('build:android:libjson FINISH')
     end
@@ -1349,11 +1524,12 @@ namespace "build" do
       ENV['TARGETLIB'] = File.basename($libname['rholog'])
       ENV['TEMP_FILES_DIR'] = $objdir['rholog']
       ENV['BUILDARGS'] = args.join(' ')
-    
+
       $abis.each do |abi|
         args = ['-f', "\"#{File.join($builddir,'Rakefile')}\"", "arch:#{abi}"]
+        args << '-m'
         args << '--trace' if USE_TRACES
-        cc_run('rake', args, nil, false) or raise "Build failed: rholog"
+        cc_run('rake', args, nil, false, nil, USE_TRACES) or raise "Build failed: rholog"
       end
       print_timestamp('build:android:librholog FINISH')
     end
@@ -1382,11 +1558,12 @@ namespace "build" do
       ENV['TARGETLIB'] = File.basename($libname['rhomain'])
       ENV['TEMP_FILES_DIR'] = $objdir['rhomain']
       ENV['BUILDARGS'] = args.join(' ')
-    
+
       $abis.each do |abi|
         args = ['-f', "\"#{File.join($builddir,'Rakefile')}\"", "arch:#{abi}"]
+        args << '-m'
         args << '--trace' if USE_TRACES
-        cc_run('rake', args, nil, false) or raise "Build failed: rhomain"
+        cc_run('rake', args, nil, false, nil, USE_TRACES) or raise "Build failed: rhomain"
       end
       print_timestamp('build:android:librhomain FINISH')
     end
@@ -1416,11 +1593,12 @@ namespace "build" do
       ENV['TARGETLIB'] = File.basename($libname['rhocommon'])
       ENV['TEMP_FILES_DIR'] = $objdir['rhocommon']
       ENV['BUILDARGS'] = args.join(' ')
-    
+
       $abis.each do |abi|
         args = ['-f', "\"#{File.join($builddir,'Rakefile')}\"", "arch:#{abi}"]
+        args << '-m'
         args << '--trace' if USE_TRACES
-        cc_run('rake', args, nil, false) or raise "Build failed: rhocommon"
+        cc_run('rake', args, nil, false, nil, USE_TRACES) or raise "Build failed: rhocommon"
       end
       print_timestamp('build:android:librhocommon FINISH')
     end
@@ -1439,6 +1617,8 @@ namespace "build" do
       args << "-I\"#{srcdir}\""
       args << "-I\"#{srcdir}/..\""
       args << "-I\"#{srcdir}/../sqlite\""
+      args << "-I\"#{$shareddir}/ruby/include\""
+      args << "-I\"#{$shareddir}/ruby/android\""
 
       ENV['SOURCEPATH'] = File.join($androidpath,'..','..')
       ENV['SOURCELIST'] = File.join($builddir, 'librhodb_build.files')
@@ -1450,11 +1630,12 @@ namespace "build" do
       ENV['TARGETLIB'] = File.basename($libname['rhodb'])
       ENV['TEMP_FILES_DIR'] = $objdir['rhodb']
       ENV['BUILDARGS'] = args.join(' ')
-    
+
       $abis.each do |abi|
         args = ['-f', "\"#{File.join($builddir,'Rakefile')}\"", "arch:#{abi}"]
+        args << '-m'
         args << '--trace' if USE_TRACES
-        cc_run('rake', args, nil, false) or raise "Build failed: rhodb"
+        cc_run('rake', args, nil, false, nil, USE_TRACES) or raise "Build failed: rhodb"
       end
       print_timestamp('build:android:librhodb FINISH')
     end
@@ -1484,11 +1665,12 @@ namespace "build" do
       ENV['TARGETLIB'] = File.basename($libname['rhosync'])
       ENV['TEMP_FILES_DIR'] = $objdir['rhosync']
       ENV['BUILDARGS'] = args.join(' ')
-    
+
       $abis.each do |abi|
         args = ['-f', "\"#{File.join($builddir,'Rakefile')}\"", "arch:#{abi}"]
+        args << '-m'
         args << '--trace' if USE_TRACES
-        cc_run('rake', args, nil, false) or raise "Build failed: rhosync"
+        cc_run('rake', args, nil, false, nil, USE_TRACES) or raise "Build failed: rhosync"
       end
       print_timestamp('build:android:librhosync FINISH')
     end
@@ -1565,6 +1747,10 @@ namespace "build" do
 
     task :librhodes => [:libs, :extensions, :genconfig] do
       print_timestamp('build:android:librhodes START')
+      if $skip_so_build
+        puts "Skip building rhodes shared library"
+        next
+      end
       srcdir = File.join $androidpath, "Rhodes", "jni", "src"
 
       args = []
@@ -1590,7 +1776,7 @@ namespace "build" do
       ENV['SHAREDLIB'] = 'librhodes.so'
       ENV['TEMP_FILES_DIR'] = File.join $tmpdir, 'librhodes'
       ENV['BUILDARGS'] = args.join(' ')
-    
+
       $abis.each do |abi|
 
         args = []
@@ -1600,22 +1786,34 @@ namespace "build" do
         rlibs << "log"
         rlibs << "dl"
         rlibs << "z"
+        rlibs << "stdc++"
 
         rlibs.map! { |x| "-l#{x}" }
 
         realabi = abi
         realabi = 'armeabi' if abi == 'arm'
 
-        extlibs = Dir.glob(File.join($app_builddir,'extensions','**',realabi,'lib*.a')) # + Dir.glob($app_builddir + "/**/lib*.so")
+        extlibs = Dir.glob(File.join($app_builddir,'extensions','**',realabi,'lib*.a')) # + Dir.glob($app_builddir + "/**/lib*.so")       
 
         extlibs.each do |lib|
           args << "-L\"#{File.dirname(lib)}\""
         end
+
+        libandroid_support = File.join($androidndkpath, "sources", "cxx-stl", "llvm-libc++", "libs", realabi)
+        
+        if File.exists? libandroid_support
+          args << "-L\"#{libandroid_support}\""
+          args << "-landroid_support"
+          puts "libandroid_support exists"
+        end
+
+
         
         deps = []
         libs = []
+
         $libname.each do |name, lib|
-          deps << lib
+          deps << File.join( File.dirname(lib), realabi, File.basename(lib) )
           libs << name
           args << "-L\"#{File.dirname(lib)}/#{realabi}\""
         end
@@ -1646,17 +1844,17 @@ namespace "build" do
         end
 
         args += rlibs
-        
+
         $ext_android_platform_lib.each do |lib|
           args << "-l#{lib}"
         end
-        
+
         ENV['LINKARGS'] = args.join(' ')
         ENV['LINKDEPS'] = (deps+extlibs).join(' ')
 
         args = ['-f', "\"#{File.join($builddir,'Rakefile')}\"", "link:#{abi}"]
-        args << '--trace' if USE_TRACES
-        cc_run('rake', args, nil, false) or raise "Build failed: rhodes"
+        args << '--trace' #if USE_TRACES
+        cc_run('rake', args, nil, false, nil, true) or raise "Build failed: rhodes"
         #Jake.run3("rake #{args.join(' ')}")
       end
       print_timestamp('build:android:librhodes FINISH')
@@ -1713,8 +1911,10 @@ namespace "build" do
 
       generator.versionName = $app_config["version"]
       generator.versionCode = version
+      generator.allowBackup = ($app_config["android"]["allowBackup"] == "false" ? "false" : "true") if $app_config["android"]
       generator.installLocation = 'auto'
       generator.minSdkVer = $min_sdk_level
+      generator.targetSdkVer = $target_sdk_level
       generator.maxSdkVer = $max_sdk_level
       generator.screenOrientation = $android_orientation unless $android_orientation.nil?
       generator.hardwareAcceleration = true if $app_config["capabilities"].index('hardware_acceleration')
@@ -1894,9 +2094,9 @@ namespace "build" do
         val = 'true' if $app_config["capabilities"].index(k) != nil
         f.puts "  public static final boolean #{k.upcase}_ENABLED = #{val};"
       end
-      
+
       f.puts "  public static final boolean DEBUG_ENABLED = #{$debug.to_s};"
-      
+
       f.puts "}"
       #end
       Jake.modify_file_if_content_changed($app_capabilities_java, f)
@@ -1925,13 +2125,18 @@ namespace "build" do
       f = StringIO.new("", "w+")
       #File.open($app_native_libs_java, "w") do |f|
       f.puts "package #{JAVA_PACKAGE_NAME};"
+      f.puts "import android.util.Log;"
       f.puts "public class NativeLibraries {"
+      f.puts "  private static final String TAG = NativeLibraries.class.getSimpleName();"
       f.puts "  public static void load() {"
       f.puts "    // Load native .so libraries"
       Dir.glob($app_builddir + "/**/lib*.so").reverse.each do |lib|
         next if lib =~ /noautoload/
+
         libname = File.basename(lib).gsub(/^lib/, '').gsub(/\.so$/, '')
+        f.puts "    Log.d(TAG, \"Loading lib #{libname}\");"
         f.puts "    System.loadLibrary(\"#{libname}\");"
+        f.puts "    Log.d(TAG, \"Lib #{libname} loaded\");"
       end
       #f.puts "    // Load native implementation of rhodes"
       #f.puts "    System.loadLibrary(\"rhodes\");"
@@ -1950,11 +2155,11 @@ namespace "build" do
       f.puts ''
       f.puts 'class RhodesStartupListeners {'
       f.puts ''
-      f.puts '	public static final String[] ourRunnableList = { ""'
+      f.puts '  public static final String[] ourRunnableList = { ""'
       $ext_android_rhodes_activity_listener.each do |a|
         f.puts '       ,"'+a+'"'
       end
-      f.puts '	};'
+      f.puts '  };'
       f.puts '}'
       Jake.modify_file_if_content_changed($app_startup_listeners_java, f)
     end
@@ -1972,6 +2177,14 @@ namespace "build" do
       Jake.run($aapt, args)
 
       raise 'Error in AAPT: R.java' unless $?.success?
+
+      @packs = AndroidTools::MavenDepsExtractor.instance.extract_packages
+      @packs.each do |p|
+        path_to_p = File.join $tmpdir, 'gen', p.split('.')
+        mkdir_p path_to_p
+        buf = File.new(File.join($app_rjava_dir, "R.java"), "r").read.gsub(/^\s*package\s*#{$app_package_name};\s*$/, "\npackage " + p + ";\n")
+        File.open(File.join(path_to_p, "R.java"), "w") { |f| f.write(buf) }
+      end
 
       #buf = File.new($rho_android_r, "r").read.gsub(/^\s*import com\.rhomobile\..*\.R;\s*$/, "\nimport #{$app_package_name}.R;\n")
       #File.open($app_android_r, "w") { |f| f.write(buf) }
@@ -2086,14 +2299,14 @@ namespace "build" do
       classpath += $path_separator + AndroidTools::MavenDepsExtractor.instance.classpath($path_separator)
       classpath += $path_separator + File.join($tmpdir, 'Rhodes')
       Dir.glob(File.join($app_builddir, '**', '*.jar')).each do |jar|
-          classpath += $path_separator + jar
+        classpath += $path_separator + jar
       end
 
       javalibsdir = Jake.get_absolute("platform/android/lib")
 
       Dir.glob( File.join(javalibsdir,"*.jar" )) do |filepath|
         classpath += $path_separator + filepath
-      end      
+      end
 
       $ext_android_additional_sources.each do |extpath, list|
         ext = File.basename(extpath)
@@ -2102,10 +2315,10 @@ namespace "build" do
         srclist = Tempfile.new "#{ext}SRC_build"
         lines = get_sources(list)
         lines.each do |line|
-            line.chomp!
-            next if line.empty?
+          line.chomp!
+          next if line.empty?
 
-            srclist.write "\"#{File.join(extpath, line)}\"\n"
+          srclist.write "\"#{File.join(extpath, line)}\"\n"
         end
         srclist.close
 
@@ -2179,18 +2392,15 @@ namespace "build" do
 
       # process partial update
 
-        $skip_build_rhodes_main = true
-        $skip_build_extensions = true
-        $skip_build_xmls = true
-        $use_prebuild_data = true
-        $skip_checking_Android_SDK = true
+      $skip_build_rhodes_main = true
+      $skip_build_extensions = true
+      $skip_build_xmls = true
+      $use_prebuild_data = true
+      $skip_checking_Android_SDK = true
 
-        Rake::Task["config:android"].invoke
+      Rake::Task["config:android"].invoke
 
-        Rake::Task['build:android:rhobundle'].invoke
-
-
-
+      Rake::Task['build:android:rhobundle'].invoke
 
 
       add_list_full_name = File.join($app_path, 'upgrade_package_add_files.txt')
@@ -2296,16 +2506,67 @@ namespace "package" do
     require 'set'
     unique_jars = Set.new
 
+    useProguard = false;
+    useProguard = $app_config["android"]["useproguard"] == "true" ? true : false if $app_config["android"]
+    proguardUserRules = $app_config["android"]["proguardrules"] if $app_config["android"]
+
+    proguardDir = File.join($startdir, "platform", "android", "proguard")
+    rm_rf File.join($tmpdir, "proguard") if File.exists? File.join($tmpdir, "proguard")
+    cp_r proguardDir, $tmpdir
+    proguardDir = File.join($tmpdir, "proguard")
+    proguardTempJarDir = File.join(proguardDir, "TempJars")
+    proguardPreBuild = File.join(proguardTempJarDir, "preguard")
+    proguardPostBuild = File.join(proguardTempJarDir, "postguard")
+    proguardRules = File.join(proguardDir, 'proguard-base-rules.pro')
+    if useProguard
+      rm_rf proguardTempJarDir if File.exists? proguardTempJarDir
+      mkdir_p proguardTempJarDir
+      mkdir_p proguardPreBuild
+      mkdir_p proguardPostBuild
+
+      if !proguardUserRules.nil?
+        rules = [File.join(proguardDir, 'proguard-base-rules.pro')]
+        rules << File.join($app_path, proguardUserRules)
+        f = File.open(File.join(proguardDir, 'proguard-generated-rules.pro'), "w")
+        rules.each do |f_name|
+          f_in = File.open(f_name, "r")
+          f_in.each {|f_str| f.puts(f_str)}
+          f.puts("\n\r")
+          f_in.close
+        end
+        f.close
+        proguardRules = File.join(proguardDir, 'proguard-generated-rules.pro')
+      end
+
+    end
+
+    jarNamesCounter = 0
     alljars.each { |jar|
       basename = File.basename(jar);
-      if !unique_jars.member?(basename)
-        args << jar
+      #FIXME: UGLYHACK FROM ALEX. Needs to add dependency filter to maven extractor
+      isFromMaven = (basename == 'classes.jar')# && Pathname.new(jar).split.include?('.m2')
+      if (!unique_jars.member?(basename)) || isFromMaven
+        if !useProguard
+          args << jar
+        else
+          jarNamesCounter += 1
+          cp jar, File.join(proguardPreBuild, jarNamesCounter.to_s + '.jar')
+        end
         unique_jars.add(basename)
       end
     }
 
+    if useProguard
+      progArgs = [];
+      progArgs << '-jar'
+      progArgs << File.join(proguardDir, 'proguard.jar')
+      progArgs << '@' + proguardRules
+      Jake.run(File.join($java, 'java'+$exe_ext), progArgs)
+      args << File.join(proguardPostBuild, "classes-processed.jar")
+    end
 
     Jake.run(File.join($java, 'java'+$exe_ext), args)
+
     unless $?.success?
       raise "Error running DX utility"
     end
@@ -2335,7 +2596,7 @@ namespace "package" do
     args = [ USE_TRACES ? "uvf" : "uf", resourcepkg]
 
     skip_underscores = true
-    
+
     Dir.glob(File.join($appassets, "**/*")).each do |f|
       next unless File.basename(f) =~ /^_/
       relpath = Pathname.new(f).relative_path_from(Pathname.new($tmpdir)).to_s
@@ -2357,11 +2618,56 @@ namespace "package" do
     Dir.glob(File.join($applibs,'**','lib*.so')).each do |lib|
       arch = File.basename(File.dirname(lib))
       args << "lib/#{arch}/#{File.basename(lib)}"
+
+      unless not $debug
+        gdbserver_path = File.join($androidndkpath, "prebuilt", "android-arm", "gdbserver", "gdbserver") #TODO: packing gdbserver for all platforms
+        if File.exist?(gdbserver_path)
+          path_to_lib = File.join $tmpdir, 'lib'
+          cp_r gdbserver_path, File.join(path_to_lib, arch)
+          args << "lib/#{arch}/gdbserver"
+        else
+          puts "gdbserver not found!"
+        end
+      end
+
     end
     Jake.run($jarbin, args, $tmpdir)
     unless $?.success?
       raise "Error packaging native libraries"
     end
+
+    $logger.info( "Packaging java resources" )
+
+    respath = File.join( $tmpdir, '.javares' )
+    rm_r respath if File.directory? respath
+
+    alljars.each do |jar|
+      Zip::File.open(jar) do |archive|
+        archive.glob("**/*.*").each do |pfile|
+          next if pfile.name =~ /^META-INF/
+          #extract everything except .class files
+          next if pfile.name =~ /.*\.class$/
+          target = File.join(respath,pfile.name)
+          mkdir_p( File.dirname(target) )
+          rm target if File.file?(target)
+          archive.extract( pfile, File.join(target) )
+        end
+      end
+    end
+
+    args = [ USE_TRACES ? "uvf" : "uf", resourcepkg]
+
+    Dir.glob(File.join(respath,"**/*")).each do |f|
+      next if not File.file?(f)
+      relpath  = Pathname.new(f).relative_path_from(Pathname.new(respath)).to_s
+      $logger.debug "Will pakage java resource: #{f} into #{relpath}"
+      args << relpath
+    end
+
+    Jake.run($jarbin, args, respath) if File.directory?(respath)
+
+    rm_rf proguardTempJarDir if File.exists? proguardTempJarDir
+    puts "Finish packaging"
     print_timestamp('package:android FINISH')
   end
 end
@@ -2374,26 +2680,18 @@ namespace "device" do
       print_timestamp('device:android:debug START')
       dexfile = $bindir + "/classes.dex"
       simple_apkfile = $targetdir + "/" + $appname + "-tmp.apk"
+      signed_apkfile = $targetdir + "/" + $appname + "-tmp_signed.apk"
       final_apkfile = $targetdir + "/" + $appname + "-debug.apk"
       resourcepkg = $bindir + "/rhodes.ap_"
 
       apk_build $androidsdkpath, simple_apkfile, resourcepkg, dexfile, true
 
-      puts "Align Debug APK file"
-      args = []
-      args << "-f"
-      args << "-v"
-      args << "4"
-      args << simple_apkfile
-      args << final_apkfile
-      out = Jake.run2($zipalign, args, :hide_output => true)
-      puts out if USE_TRACES
-      unless $?.success?
-        puts "Error running zipalign"
-        exit 1
-      end
+      AndroidTools.signApkDebug( simple_apkfile, signed_apkfile )
+      AndroidTools.alignApk( signed_apkfile, final_apkfile )
+
       #remove temporary files
       rm_rf simple_apkfile
+      rm_rf signed_apkfile
 
       File.open(File.join(File.dirname(final_apkfile), "app_info.txt"), "w") do |f|
         f.puts $app_package_name
@@ -2412,6 +2710,32 @@ namespace "device" do
       puts "Install complete"
     end
 
+    task :studio_build => ['config:android'] do
+      $skip_so_build = true
+      $abis = $app_config['android']['abis'] if $app_config["android"]
+      $abis = ['arm'] unless $abis
+      abi = $abis[0]
+
+      if abi == 'arm'
+        realabi = 'armeabi-v7a'
+      else
+        realabi = abi
+      end
+
+
+
+      project_app_path = File.join $app_path,'project','android_studio', 'app'
+      librhodes_path = File.join project_app_path, 'build', 'intermediates',
+                                 'cmake', $debug ? 'debug' : 'release', 'obj', realabi, 'librhodes.so'
+
+      target_path = File.join $app_builddir, 'librhodes', 'lib', realabi
+      if !File.exists?(target_path)
+        mkdir_p target_path
+      end
+      cp_r librhodes_path, target_path
+      Rake::Task["device:android:production"].invoke
+    end
+
     desc "Build production signed for device"
     task :production => "package:android" do
       print_timestamp('device:android:production START')
@@ -2424,63 +2748,13 @@ namespace "device" do
       apk_build $androidsdkpath, simple_apkfile, resourcepkg, dexfile, false
 
       if not File.exists? $keystore
-        puts "Generating private keystore..."
-        mkdir_p File.dirname($keystore) unless File.directory? File.dirname($keystore)
-
-        args = []
-        args << "-genkey"
-        args << "-alias"
-        args << $storealias
-        args << "-keyalg"
-        args << "RSA"
-        args << "-validity"
-        args << "20000"
-        args << "-keystore"
-        args << $keystore
-        args << "-storepass"
-        args << $storepass
-        args << "-keypass"
-        args << $keypass
-        Jake.run($keytool, args)
-        unless $?.success?
-          puts "Error generating keystore file"
-          exit 1
-        end
+        AndroidTools.generateKeystore( $keystore, $storealias, $storepass, $keypass )
       end
 
-      puts "Signing APK file"
-      args = []
-      args << "-sigalg"
-      args << "MD5withRSA"
-      args << "-digestalg"
-      args << "SHA1"
-      args << "-verbose"
-      args << "-keystore"
-      args << $keystore
-      args << "-storepass"
-      args << $storepass
-      args << "-signedjar"
-      args << signed_apkfile
-      args << simple_apkfile
-      args << $storealias
-      Jake.run($jarsigner, args)
-      unless $?.success?
-        puts "Error running jarsigner"
-        exit 1
-      end
 
-      puts "Align APK file"
-      args = []
-      args << "-f"
-      args << "-v"
-      args << "4"
-      args << '"' + signed_apkfile + '"'
-      args << '"' + final_apkfile + '"'
-      Jake.run($zipalign, args)
-      unless $?.success?
-        puts "Error running zipalign"
-        exit 1
-      end
+      AndroidTools.signApk( simple_apkfile, signed_apkfile, $keystore, $keypass, $storepass, $storealias )
+      AndroidTools.alignApk( signed_apkfile, final_apkfile )
+
       #remove temporary files
       rm_rf simple_apkfile
       rm_rf signed_apkfile
@@ -2526,9 +2800,11 @@ def run_as_spec(device_flag, uninstall_app)
   Thread.new {
     sleep 2000
     if device_flag == '-e'
-      AndroidTools.kill_adb_and_emulator
+      #AndroidTools.kill_adb_and_emulator
+      puts "%%% was AndroidTools.kill_adb_and_emulator !!!"
     else
-      AndroidTools.kill_adb_logcat device_flag, log_name
+      #AndroidTools.kill_adb_logcat device_flag, log_name
+      puts "%%% was AndroidTools.kill_adb_logcat device_flag, log_name !!!"
     end
   }
 
@@ -2539,46 +2815,142 @@ def run_as_spec(device_flag, uninstall_app)
   Jake.before_run_spec
   start = Time.now
 
+  puts "CurTime is "+Time.now.to_s
   puts "Waiting for application ..."
 
-  for i in 0..60
-    if AndroidTools.application_running(device_flag, $app_package_name)
-      break
-    else
-      sleep(1)
+
+  tc_start_time = Time.now
+  tc_overtime = false
+  tc_timeout_in_seconds = 10*60
+
+  while !tc_overtime do
+    app_is_running = AndroidTools.application_running(device_flag, $app_package_name)
+    $logger.debug "%%% app_is_running="+app_is_running.to_s
+    if app_is_running
+      tc_overtime = true
     end
+    if ((Time.now.to_i - tc_start_time.to_i) > tc_timeout_in_seconds)
+      tc_overtime = true
+    end
+    sleep(5) unless tc_overtime
   end
+  sleep(1)
+  puts "CurTime is "+Time.now.to_s
+  app_is_runningz = AndroidTools.application_running(device_flag, $app_package_name)
+  puts "%%% app_is_runningz FINAL ="+app_is_runningz.to_s
+  sleep(1)
 
   puts "Waiting for log file: #{log_name}"
 
-  for i in 0..120
-    if !File.exist?(log_name)
-      sleep(1)
-    else
-      break
+  tc_start_time = Time.now
+  tc_overtime = false
+  tc_timeout_in_seconds = 5*60
+
+  while !tc_overtime do
+    if File.exist?(log_name)
+      tc_overtime = true
     end
+    if ((Time.now.to_i - tc_start_time.to_i) > tc_timeout_in_seconds)
+      tc_overtime = true
+    end
+    sleep(5) unless tc_overtime
   end
+
+  puts "CurTime is "+Time.now.to_s
+
+  logfile_is_exist = File.exist?(log_name)
+  puts "%%% logfile is exist FINAL ="+logfile_is_exist.to_s
 
   if !File.exist?(log_name)
     puts "Cannot read log file: " + log_name
     exit(1)
   end
 
+
+  timeout_in_seconds = 25*60
+
+  timeout_output_in_seconds = 3*60
+  last_output_time = Time.now
+
+  log_lines = []
+
+  start_logging = Time.now
+  is_timeout = false
+
+  last_spec_line = ""
+  last_spec_iseq_line = ""
+
+  is_correct_stop = false
+  is_exit_by_app_not_run = false
+
+  app_exit_start_time = nil
+  app_exit_timeout_in_seconds = 60
+  app_is_running = true
+
   puts "Start reading log ..."
   File.open(log_name, 'r:UTF-8') do |io|
+    $logger.debug "%%% io="+io.to_s
     end_spec = false
     while !end_spec do
+      $logger.debug "%%% while start"
       io.each do |line|
-        puts line
+        #puts "%%% line="+line.to_s
+        $logger.debug line
+        log_lines << line
         if line.class.method_defined? "valid_encoding?"
           end_spec = !Jake.process_spec_output(line) if line.valid_encoding?
         else
           end_spec = !Jake.process_spec_output(line)
         end
-        end_spec = true if line =~ /MSpec runner stopped/
+
+        is_mspec_stop = line =~ /MSpec runner stopped/
+        is_terminated = line =~ /\| \*\*\*Terminated\s+(.*)/
+
+        is_correct_stop = true if is_mspec_stop || is_terminated
+
+        end_spec = true if is_mspec_stop
+
+        if end_spec
+          puts "%%% stop spec !"
+          puts "%%% stop spec by this line : ["+line.to_s+"]"
+        end
+
+        last_spec_line = line if line =~ /_spec/
+        last_spec_iseq_line = line if line =~ /_spec.iseq/
+
+        #check for timeout
+        if (Time.now.to_i - start_logging.to_i) > timeout_in_seconds
+          end_spec = true
+          is_timeout = true
+          puts "%%% TIMEOUT !!!"
+        end
+        if (Time.now.to_i - last_output_time.to_i) > timeout_output_in_seconds
+          last_output_time = Time.now
+          puts "%%% please wait - application still running ..."
+        end
+
         break if end_spec
       end
-      break unless AndroidTools.application_running(device_flag, $app_package_name)
+      if (Time.now.to_i - last_output_time.to_i) > timeout_output_in_seconds
+        last_output_time = Time.now
+        puts "%%% please wait - application still running ..."
+      end
+      if app_is_running
+        app_is_running = AndroidTools.application_running(device_flag, $app_package_name)
+        puts "%%% application is not runned on simulator !!!" if !app_is_running
+        is_exit_by_app_not_run = !app_is_running
+        if !app_is_running
+          app_exit_start_time = Time.now
+        end
+      end
+
+      if !app_is_running
+        if (Time.now.to_i - app_exit_start_time.to_i) > app_exit_timeout_in_seconds
+          end_spec = true
+          puts "%%% application is not runned - stop waiting dealy for log processing !"
+        end
+      end
+      #break unless app_is_running
       sleep(5) unless end_spec
     end
   end
@@ -2586,16 +2958,38 @@ def run_as_spec(device_flag, uninstall_app)
   puts "Processing spec results ..."
   Jake.process_spec_results(start)
 
-  # stop app
-  uninstall_app = true if uninstall_app.nil? # by default uninstall spec app
-  do_uninstall(device_flag) if uninstall_app and ((device_flag != '-e') or AndroidTools.is_emulator_running)
-  if device_flag == '-e'
-    AndroidTools.kill_adb_and_emulator
-  else
-    AndroidTools.kill_adb_logcat(device_flag, log_name)
+  if is_timeout || (is_exit_by_app_not_run && !is_correct_stop)  || !is_correct_stop
+    puts "Tests has issues : is_timeout["+is_timeout.to_s+"], timeout["+timeout_in_seconds.to_s+" sec], app_exit_unexpected["+is_exit_by_app_not_run.to_s+"], not_correct_terminated_line["+(!is_correct_stop).to_s+"] !"
+    puts "last_spec_line = ["+last_spec_line.to_s+"]"
+    puts "last_spec_iseq_line = ["+last_spec_iseq_line.to_s+"]"
+    puts "last spec executed = ["+$latest_test_line.to_s+"]"
+    puts "This is last 5000 lines from log :"
+    idx = log_lines.size-5000
+    if idx < 0
+      idx = 0
+    end
+    while idx < log_lines.size
+      puts "line ["+idx.to_s+"]: "+log_lines[idx]
+      idx = idx + 1
+    end
   end
 
+  # stop app
+  #uninstall_app = true if uninstall_app.nil? # by default uninstall spec app
+  #do_uninstall(device_flag) if uninstall_app and ((device_flag != '-e') or AndroidTools.is_emulator_running)
+  #if device_flag == '-e'
+  #AndroidTools.kill_adb_and_emulator
+  #else
+  #AndroidTools.kill_adb_logcat(device_flag, log_name)
+  #end
+
   $stdout.flush
+
+  exit 1 if is_timeout
+  exit 1 if $total.to_i==0
+  exit 1 if !is_correct_stop
+  exit $failed.to_i
+
 end
 
 namespace "run" do
@@ -2613,7 +3007,7 @@ namespace "run" do
       throw "You must pass package name" if package_file.nil?
       throw "No file to run" if !File.exists?(package_file)
 
-      AndroidTools.run_emulator
+      AndroidTools.run_emulator(:hidden => ((ENV['TRAVIS'] != nil) && (ENV['TRAVIS'] != "")))
 
       AndroidTools.load_app_and_run('-e', File.expand_path(package_file), package_name)
     end
@@ -2646,7 +3040,7 @@ namespace "run" do
       task :debug => ['run:android:emulator:run']
       task :run => ['config:android:emulator'] do
         AndroidTools.kill_adb_logcat('-e')
-        AndroidTools.run_emulator
+        AndroidTools.run_emulator(:hidden => ((ENV['TRAVIS'] != nil) && (ENV['TRAVIS'] != "")))
 
         apkfile = File.expand_path(File.join $targetdir, $appname + "-debug.apk")
         AndroidTools.load_app_and_run('-e', apkfile, $app_package_name)

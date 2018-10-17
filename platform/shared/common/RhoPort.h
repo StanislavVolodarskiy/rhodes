@@ -42,10 +42,15 @@
 #include <arpa/inet.h>
 #endif
 
+#ifdef OS_UWP
+#define HANDLE_FLAG_INHERIT 1
+#endif
+
 #if defined( WINDOWS_PLATFORM )
 
 #include <windows.h>
 #include <time.h>
+#include <stdlib.h>
 #ifdef _MSC_VER
 #pragma warning(disable:4100)
 #pragma warning(disable:4189)
@@ -77,7 +82,7 @@ extern long _timezone;
 #define _USE_MATH_DEFINES
 #endif
 
-#if defined(OS_WINCE) || defined(OS_WP8)
+#if defined(OS_WINCE) || defined(OS_WP8) || defined(OS_UWP)
 #define M_PI 3.14159265358979323846
 #define M_LN2 0.69314718055994530942
 #endif
@@ -107,7 +112,10 @@ typedef __int64 int64;
 typedef unsigned __int64 uint64;
 
 #define strcasecmp _stricmp
+
+#ifdef _WIN32_WCE
 #define snprintf _snprintf
+#endif
 
 #define FMTI64 "%I64d"
 #define FMTU64 "%I64u"
@@ -171,7 +179,7 @@ RHO_GLOBAL int vswnprintf(wchar_t *, size_t, const wchar_t *, void *);
 #  define	vswnprintf vswprintf
 #endif //OS_WINCE
 
-#if defined( OS_WP8 )
+#if defined( OS_WP8 ) || defined( OS_UWP )
 #  include <stdlib.h>
 #  include <errno.h>
 
@@ -242,14 +250,22 @@ GetStdHandle(
     _In_ DWORD nStdHandle
     );
 
+//#if defined(_UWP_LIB)
+//#define RHOPORT_STRUCT_EXISTS
+//#else
+#define REDEFINE_WINAPI_OLD_FUNCTIONS
+//#endif
 
+
+#if !defined(_UWP_LIB)
 LPCH
 WINAPI
 GetEnvironmentStrings(
     VOID
     );
+#endif
 
-#if !defined(_WP8_LIB)
+#if !defined(_WP8_LIB) && !defined(_UWP_LIB)
 _NullNull_terminated_
 LPWCH
 WINAPI
@@ -264,17 +280,39 @@ GetEnvironmentStringsW(
 #define GetEnvironmentStringsA  GetEnvironmentStrings
 #endif // !UNICODE
 
-
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
 BOOL
 WINAPI
 SetEnvironmentStringsW(
     _In_ _Pre_ _NullNull_terminated_ LPWCH NewEnvironment
     );
+_NullNull_terminated_
+LPWCH
+WINAPI
+GetEnvironmentStringsW(
+	VOID
+);
+DWORD WINAPI GetEnvironmentVariableW(
+	_In_opt_  LPCTSTR lpName,
+	_Out_opt_ LPTSTR  lpBuffer,
+	_In_      DWORD   nSize
+);
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
+
+
 
 #ifdef UNICODE
 #define SetEnvironmentStrings  SetEnvironmentStringsW
 #endif
 
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
+
+typedef enum {
+	AddrMode1616,
+	AddrMode1632,
+	AddrModeReal,
+	AddrModeFlat
+} ADDRESS_MODE;
 
 BOOL
 WINAPI
@@ -294,14 +332,19 @@ FreeEnvironmentStringsW(
 #else
 #define FreeEnvironmentStrings  FreeEnvironmentStringsA
 #endif // !UNICODE
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
 
+#if !defined(RHOPORT_STRUCT_EXISTS)
 typedef struct _PROCESS_INFORMATION {
     HANDLE hProcess;
     HANDLE hThread;
     DWORD dwProcessId;
     DWORD dwThreadId;
 } PROCESS_INFORMATION, *PPROCESS_INFORMATION, *LPPROCESS_INFORMATION;
-
+#else
+typedef struct _PROCESS_INFORMATION PROCESS_INFORMATION, *PPROCESS_INFORMATION, *LPPROCESS_INFORMATION;
+#endif
+#if !defined(RHOPORT_STRUCT_EXISTS)
 typedef struct _STARTUPINFOA {
     DWORD   cb;
     LPSTR   lpReserved;
@@ -322,6 +365,11 @@ typedef struct _STARTUPINFOA {
     HANDLE  hStdOutput;
     HANDLE  hStdError;
 } STARTUPINFOA, *LPSTARTUPINFOA;
+#else
+typedef struct _STARTUPINFOA STARTUPINFOA, *LPSTARTUPINFOA;
+#endif
+
+#if !defined(RHOPORT_STRUCT_EXISTS)
 typedef struct _STARTUPINFOW {
     DWORD   cb;
     LPWSTR  lpReserved;
@@ -342,6 +390,11 @@ typedef struct _STARTUPINFOW {
     HANDLE  hStdOutput;
     HANDLE  hStdError;
 } STARTUPINFOW, *LPSTARTUPINFOW;
+#else
+typedef struct _STARTUPINFOW STARTUPINFOW, *LPSTARTUPINFOW;
+#endif
+
+
 #ifdef UNICODE
 typedef STARTUPINFOW STARTUPINFO;
 typedef LPSTARTUPINFOW LPSTARTUPINFO;
@@ -350,9 +403,8 @@ typedef STARTUPINFOA STARTUPINFO;
 typedef LPSTARTUPINFOA LPSTARTUPINFO;
 #endif // UNICODE
 
-
-
-HANDLE
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
+/*HANDLE
 WINAPI
 CreateFileA(
     _In_ LPCSTR lpFileName,
@@ -376,6 +428,10 @@ CreateFileW(
     _In_ DWORD dwFlagsAndAttributes,
     _In_opt_ HANDLE hTemplateFile
     );
+*/
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
+
+
 
 #ifdef UNICODE
 #define CreateFile  CreateFileW
@@ -383,6 +439,7 @@ CreateFileW(
 #define CreateFile  CreateFileA
 #endif // !UNICODE
 
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
 HMODULE
 WINAPI
 LoadLibraryA(
@@ -394,12 +451,14 @@ WINAPI
 LoadLibraryW(
     _In_ LPCWSTR lpLibFileName
     );
+
 #ifdef UNICODE
 #define LoadLibrary  LoadLibraryW
 #else
 #define LoadLibrary  LoadLibraryA
 #endif // !UNICODE
 
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
 
 LPSTR
 WINAPI
@@ -416,7 +475,8 @@ CharNextW(
 #define CharNext  CharNextA
 #endif // !UNICODE
 
-
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
+/*
 HMODULE
 WINAPI
 GetModuleHandleA(
@@ -429,6 +489,9 @@ WINAPI
 GetModuleHandleW(
     _In_opt_ LPCWSTR lpModuleName
     );
+*/
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
+
 
 #ifndef GetModuleHandle
 #ifdef UNICODE
@@ -457,7 +520,7 @@ lstrcpyW(
 #define lstrcpy  lstrcpyA
 #endif // !UNICODE
 
-
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
 LPSTR
 WINAPI
 CharPrevA(
@@ -469,13 +532,17 @@ WINAPI
 CharPrevW(
     _In_ LPCWSTR lpszStart,
     _In_ LPCWSTR lpszCurrent);
+
 #ifdef UNICODE
 #define CharPrev  CharPrevW
 #else
 #define CharPrev  CharPrevA
 #endif // !UNICODE
 
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
 
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
+/*
 HANDLE
 WINAPI
 OpenProcess(
@@ -500,6 +567,8 @@ GetFileSize(
     _In_ HANDLE hFile,
     _Out_opt_ LPDWORD lpFileSizeHigh
     );
+	*/
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
 
 #define CreateThread CreateThreadWP8
 
@@ -557,6 +626,7 @@ CreateNamedPipeA(
 
 #define TLS_OUT_OF_INDEXES ((DWORD)0xFFFFFFFF)
 
+#if !defined(RHOPORT_STRUCT_EXISTS)
 typedef struct _BY_HANDLE_FILE_INFORMATION {
     DWORD dwFileAttributes;
     FILETIME ftCreationTime;
@@ -569,7 +639,14 @@ typedef struct _BY_HANDLE_FILE_INFORMATION {
     DWORD nFileIndexHigh;
     DWORD nFileIndexLow;
 } BY_HANDLE_FILE_INFORMATION, *PBY_HANDLE_FILE_INFORMATION, *LPBY_HANDLE_FILE_INFORMATION;
+#else
+typedef struct _BY_HANDLE_FILE_INFORMATION BY_HANDLE_FILE_INFORMATION, *PBY_HANDLE_FILE_INFORMATION, *LPBY_HANDLE_FILE_INFORMATION;
+#endif
 
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
+
+
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
 
 BOOL
 WINAPI
@@ -623,6 +700,7 @@ TlsFree(
 
 void WINAPI TlsShutdown();
 
+#ifndef OS_UWP
 DWORD
 WINAPI
 WaitForMultipleObjectsWP8(
@@ -633,7 +711,16 @@ WaitForMultipleObjectsWP8(
     );
 
 #define WaitForMultipleObjects WaitForMultipleObjectsWP8
-
+#else
+DWORD
+WINAPI
+WaitForMultipleObjects(
+	_In_ DWORD nCount,
+	_In_reads_(nCount) CONST HANDLE *lpHandles,
+	_In_ BOOL bWaitAll,
+	_In_ DWORD dwMilliseconds
+);
+#endif
 BOOL
 WINAPI
 GetHandleInformation(
@@ -677,6 +764,8 @@ BOOL WINAPI GetExitCodeThreadWP8(
 
 #define SetThreadPriority SetThreadPriorityWP8
 
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
+/*
 DWORD
 WINAPI
 GetModuleFileNameA(
@@ -692,6 +781,10 @@ GetModuleFileNameW(
     _Out_writes_to_(nSize, ((return < nSize) ? (return + 1) : nSize)) LPWSTR lpFilename,
     _In_ DWORD nSize
     );
+	*/
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
+
+
 
 #ifdef UNICODE
 #define GetModuleFileName  GetModuleFileNameW
@@ -699,6 +792,8 @@ GetModuleFileNameW(
 #define GetModuleFileName  GetModuleFileNameA
 #endif // !UNICODE
 
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
+/*
 BOOL
 WINAPI
 GetVersionExA(
@@ -710,6 +805,10 @@ WINAPI
 GetVersionExW(
     _Inout_ LPOSVERSIONINFOW lpVersionInformation
     );
+*/
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
+
+
 
 #ifdef UNICODE
 #define GetVersionEx  GetVersionExW
@@ -822,7 +921,8 @@ TerminateProcess(
     _In_ UINT uExitCode
     );
 
-DWORD
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
+/*DWORD
 WINAPI
 GetFileAttributesA(
     _In_ LPCSTR lpFileName
@@ -832,7 +932,11 @@ DWORD
 WINAPI
 GetFileAttributesW(
     _In_ LPCWSTR lpFileName
-    );
+    );*/
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
+
+
+
 
 #ifdef UNICODE
 #define GetFileAttributes  GetFileAttributesW
@@ -859,6 +963,8 @@ MoveFileW(
 #define MoveFile  MoveFileA
 #endif // !UNICODE
 
+#ifdef REDEFINE_WINAPI_OLD_FUNCTIONS
+/*
 BOOL
 WINAPI
 UnlockFile(
@@ -875,6 +981,10 @@ LocalFileTimeToFileTime(
     _In_ CONST FILETIME * lpLocalFileTime,
     _Out_ LPFILETIME lpFileTime
     );
+	*/
+#endif // REDEFINE_WINAPI_OLD_FUNCTIONS
+
+
 
 BOOL
 WINAPI

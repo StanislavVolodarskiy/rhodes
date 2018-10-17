@@ -114,15 +114,15 @@ module Rhogen
       template.destination = "#{name}/.gitignore"
     end
 
-    template :rubyversion do |template|
-      template.source = 'ruby-version'
-      template.destination = "#{name}/.ruby-version"
-    end
+    #template :rubyversion do |template|
+    #  template.source = 'ruby-version'
+    #  template.destination = "#{name}/.ruby-version"
+    #end
 
-    template :gemfile do |template|
-      template.source = 'Gemfile'
-      template.destination = "#{name}/Gemfile"
-    end
+    #template :gemfile do |template|
+    #  template.source = 'Gemfile'
+    #  template.destination = "#{name}/Gemfile"
+    #end
 
     template :application do |template|
       template.source = 'app/application.rb'
@@ -192,7 +192,7 @@ module Rhogen
       template.source = 'app/Settings/wait.erb'
       template.destination = "#{name}/app/Settings/wait.erb"
     end
-    
+
     file :androidmanifesterb do |file|
       file.source = 'AndroidManifest.erb'
       file.destination = "#{name}/AndroidManifest.erb"
@@ -271,15 +271,15 @@ module Rhogen
       template.destination = "#{name}/.gitignore"
     end
 
-    template :rubyversion do |template|
-      template.source = 'ruby-version'
-      template.destination = "#{name}/.ruby-version"
-    end
+    #template :rubyversion do |template|
+    #  template.source = 'ruby-version'
+    #  template.destination = "#{name}/.ruby-version"
+    #end
 
-    template :gemfile do |template|
-      template.source = 'Gemfile'
-      template.destination = "#{name}/Gemfile"
-    end
+    #template :gemfile do |template|
+    #  template.source = 'Gemfile'
+    #  template.destination = "#{name}/Gemfile"
+    #end
 
     template :application do |template|
       template.source = 'app/javascript_index.html'
@@ -329,6 +329,84 @@ module Rhogen
     directory :public do |directory|
       directory.source = 'public'
       directory.destination = "#{name}/public/"
+    end
+
+    template :rakefile do |template|
+      template.source = 'Rakefile'
+      template.destination = "#{name}/Rakefile"
+    end
+  end
+
+
+  class NodeJSAppGenerator < BaseGenerator
+
+    def self.source_root
+      File.join(File.dirname(__FILE__), 'templates', 'application')
+    end
+
+    desc <<-DESC
+      Generates a new Node.js-based rhodes application.
+
+      Options:
+        --rhoconnect - include rhoconnect-client in application
+
+      Required:
+        name        - application name
+
+      Optional:
+        syncserver  - url to the rhosync application (i.e. "http://localhost:9292")
+        zip_url     - optional url to zipfile download of bundle (this can be your RhoHub Bundle URL)
+    DESC
+
+    #option :testing_framework, :desc => 'Specify which testing framework to use (spec, test_unit)'
+
+    option :rhoconnect, :desc => '', :as => :boolean, :default => false
+
+    first_argument :name, :required => true, :desc => 'application name'
+    second_argument :syncserver, :required => false, :desc => 'url to the source adapter (i.e. "" or "http://rhosync.rhohub.com/apps/myapp/sources/")'
+    third_argument :zip_url, :required => false, :desc => 'optional url to zipfile download of bundle'
+
+    invoke :appResources
+
+    template :config do |template|
+      zip_url ||= ''
+      syncserver ||= ''
+      template.source = 'nodejs_rhoconfig.txt'
+      template.destination = "#{name}/rhoconfig.txt"
+    end
+
+    template :buildyml do |template|
+      @sdk_path = File.expand_path(File.join(File.dirname(__FILE__), '..', '..'))
+      @sdk_path.gsub!('\\', '/')
+      @app_name = name
+      @app_name_cleared = name.downcase.split(/[^a-zA-Z0-9\.\-]/).map { |w| w.downcase }.join("")
+      puuid = UUID.new
+      generated_uuid = puuid.generate
+      @productid = generated_uuid
+      @uid = '0x'+(0xE0000000 + rand(0xFFFFFFF)).to_s(16)
+      @rhoconnectclient_ext = '"rhoconnect-client"' if rhoconnect
+      template.source = 'nodejs_build.yml'
+      template.destination = "#{name}/build.yml"
+    end
+
+    template :gitignore do |template|
+      template.source = 'gitignore'
+      template.destination = "#{name}/.gitignore"
+    end
+
+    directory :resources do |directory|
+      directory.source = 'resources'
+      directory.destination = "#{name}/resources"
+    end
+
+    file :androidmanifesterb do |file|
+      file.source = 'AndroidManifest.erb'
+      file.destination = "#{name}/AndroidManifest.erb"
+    end
+
+    directory :public do |directory|
+      directory.source = 'nodejs'
+      directory.destination = "#{name}/nodejs/"
     end
 
     template :rakefile do |template|
@@ -596,28 +674,30 @@ module Rhogen
     def rhodes_root_path
       return rhodes_root
     end
-    
+
     def load_plist(fname)
        require 'cfpropertylist'
        plist = CFPropertyList::List.new(:file => fname)
        data = CFPropertyList.native_types(plist.value)
        data
-    end    
-    
+    end
+
 	def get_xcode_version
   		info_path = '/Applications/XCode.app/Contents/version.plist'
-  		ret_value = '0.0'
+  		version = '0.0'
   		if File.exists? info_path
     		hash = load_plist(info_path)
-    		ret_value = hash['CFBundleShortVersionString'] if hash.has_key?('CFBundleShortVersionString')
+    		version = hash['CFBundleShortVersionString'] if hash.has_key?('CFBundleShortVersionString')
   		else
     		puts '$$$ can not find XCode version file ['+info_path+']'
   		end
-  		puts '$$$ XCode version is '+ret_value
-  		return ret_value
-	end    
-    
-    
+  		puts '$$$ XCode version is '+version
+		major_version = version[0..(version.index('.')-1)]
+		puts '$$$ XCode major version is '+major_version
+  		return major_version
+	end
+
+
 
     directory :root do |directory|
       @options[:force] = true
@@ -646,6 +726,14 @@ module Rhogen
       end
     end
 
+    directory :assets do |directory|
+      directory.source = 'Media.xcassets'
+      directory.destination = 'project/iphone/Media.xcassets'
+      if File.exists?(directory.destination)
+        directory.destination = 'project/iphone/toremoved'
+      end
+    end
+
     #directory :settings do |directory|
     #  #@options[:force] = true
     #  directory.source = 'Settings.bundle'
@@ -660,9 +748,13 @@ module Rhogen
       #@options[:skip] = true
       template.source = 'Bremen.xcodeproj/project.pbxproj'
       xcode_version = get_xcode_version
-	  if xcode_version[0].to_i >= 7
+	  if xcode_version.to_i >= 7
         template.source = 'Bremen7.xcodeproj/project.pbxproj'
       end
+      if xcode_version.to_i >= 8
+        template.source = 'Bremen8.xcodeproj/project.pbxproj'
+      end
+      puts "$$$ template.source = "+template.source.to_s
       template.destination = "project/iphone/#{namecamelcase}.xcodeproj/project.pbxproj"
       if File.exists?(template.destination)
         #puts '$$$$$$$$$$$$$$$$ EXIST'+template.destination
@@ -790,7 +882,7 @@ module Rhogen
       #@options[:skip] = true
       template.source = 'Bremen7_prebuild.xcodeproj/project.pbxproj'
       xcode_version = get_xcode_version
-      if xcode_version[0].to_i >= 7
+      if xcode_version.to_i >= 7
         template.source = 'Bremen7_prebuild.xcodeproj/project.pbxproj'
       end
       template.destination = "project/iphone/#{namecamelcase}.xcodeproj/project.pbxproj"
@@ -868,8 +960,8 @@ module Rhogen
       puuid = UUID.new
       generated_uuid = puuid.generate
       @productid = generated_uuid
-      @wp8LibGUID = puuid.generate
-      @wp8StubImplGUID = puuid.generate
+      @uwpLibGUID = puuid.generate
+      @uwpStubImplGUID = puuid.generate
       @@noapp = noapp
     end
 
@@ -1021,66 +1113,66 @@ module Rhogen
       template.destination = "extensions/#{name}/ext/platform/wm/src/#{namecamelcase}_impl.cpp"
     end
 
-    template :extension_wp8_vcproject do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/Montana.vcxproj'
-      template.destination = "extensions/#{name}/ext/platform/wp8/#{namecamelcase}.vcxproj"
+    template :extension_uwp_vcproject do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/Montana.vcxproj'
+      template.destination = "extensions/#{name}/ext/platform/uwp/#{namecamelcase}.vcxproj"
     end
 
-    template :extension_wp8_vcprojectprops do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/montana.props'
-      template.destination = "extensions/#{name}/ext/platform/wp8/#{namecamelcase}.props"
+    template :extension_uwp_vcprojectprops do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/montana.props'
+      template.destination = "extensions/#{name}/ext/platform/uwp/#{namecamelcase}.props"
     end
 
-    template :extension_wp8_vcprojectfilters do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/montana.vcxproj.filters'
-      template.destination = "extensions/#{name}/ext/platform/wp8/#{namecamelcase}.vcxproj.filters"
+    template :extension_uwp_vcprojectfilters do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/montana.vcxproj.filters'
+      template.destination = "extensions/#{name}/ext/platform/uwp/#{namecamelcase}.vcxproj.filters"
     end
 
-    template :extension_wp8_impl_cpp do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/src/montana_impl.cpp'
-      template.destination = "extensions/#{name}/ext/platform/wp8/src/#{namecamelcase}_impl.cpp"
+    template :extension_uwp_impl_cpp do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/src/montana_impl.cpp'
+      template.destination = "extensions/#{name}/ext/platform/uwp/src/#{namecamelcase}_impl.cpp"
     end
 
-    # wp8: c++ -> c# bridging
+    # uwp: c++ -> c# bridging
 
-    template :extension_wp8_impl_targets do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/MontanaImpl.targets'
-      template.destination = "extensions/#{name}/ext/platform/wp8/#{namecamelcase}Impl.targets"
+    template :extension_uwp_impl_targets do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/MontanaImpl.targets'
+      template.destination = "extensions/#{name}/ext/platform/uwp/#{namecamelcase}Impl.targets"
     end
 
-    template :extension_wp8_impl_csproj do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/MontanaImpl.csproj'
-      template.destination = "extensions/#{name}/ext/platform/wp8/#{namecamelcase}Impl.csproj"
+    template :extension_uwp_impl_csproj do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/MontanaImpl.csproj'
+      template.destination = "extensions/#{name}/ext/platform/uwp/#{namecamelcase}Impl.csproj"
     end
 
-    template :extension_wp8_impl_props do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/MontanaImpl.props'
-      template.destination = "extensions/#{name}/ext/platform/wp8/#{namecamelcase}Impl.props"
+    template :extension_uwp_impl_props do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/MontanaImpl.props'
+      template.destination = "extensions/#{name}/ext/platform/uwp/#{namecamelcase}Impl.props"
     end
 
-    template :extension_wp8_impl_cs do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/src/Montana_impl.cs'
-      template.destination = "extensions/#{name}/ext/platform/wp8/src/#{namecamelcase}_impl.cs"
+    template :extension_uwp_impl_cs do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/src/Montana_impl.cs'
+      template.destination = "extensions/#{name}/ext/platform/uwp/src/#{namecamelcase}_impl.cs"
     end
 
-    template :extension_wp8_impl_assemblyinfo do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/src/Properties/AssemblyInfo.cs'
-      template.destination = "extensions/#{name}/ext/platform/wp8/src/Properties/AssemblyInfo.cs"
+    template :extension_uwp_impl_assemblyinfo do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/src/Properties/AssemblyInfo.cs'
+      template.destination = "extensions/#{name}/ext/platform/uwp/src/Properties/AssemblyInfo.cs"
     end
 
-    template :extension_wp8_lib_vcxproj do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/MontanaLib.vcxproj'
-      template.destination = "extensions/#{name}/ext/platform/wp8/#{namecamelcase}Lib.vcxproj"
+    template :extension_uwp_lib_vcxproj do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/MontanaLib.vcxproj'
+      template.destination = "extensions/#{name}/ext/platform/uwp/#{namecamelcase}Lib.vcxproj"
     end
 
-    template :extension_wp8_lib_vcxproj_filters do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/MontanaLib.vcxproj.filters'
-      template.destination = "extensions/#{name}/ext/platform/wp8/#{namecamelcase}Lib.vcxproj.filters"
+    template :extension_uwp_lib_vcxproj_filters do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/MontanaLib.vcxproj.filters'
+      template.destination = "extensions/#{name}/ext/platform/uwp/#{namecamelcase}Lib.vcxproj.filters"
     end
 
-    template :extension_wp8_lib_props do |template|
-      template.source = 'extensions/montana/ext/platform/wp8/MontanaLib.props'
-      template.destination = "extensions/#{name}/ext/platform/wp8/#{namecamelcase}Lib.props"
+    template :extension_uwp_lib_props do |template|
+      template.source = 'extensions/montana/ext/platform/uwp/MontanaLib.props'
+      template.destination = "extensions/#{name}/ext/platform/uwp/#{namecamelcase}Lib.props"
     end
 
 
@@ -1177,7 +1269,7 @@ module Rhogen
               fname = File.join('/Users/snowyowl/work/rhomobile/rhodes/rendered/',comosite_name)
               File.open(fname,'w') { |io| io << action.render.to_lines.join() }
             end
-          rescue 
+          rescue
             puts "Error processing: #{action.source.inspect}".bold.red
             raise
           end
@@ -1410,41 +1502,40 @@ module Rhogen
       template.destination = "platform/android/generated/jni/#{$cur_module.name.downcase}_js_wrap.cpp"
     end
 
-
-    # wp8
-    template :wp8_stub_impl_montana_impl do |template|
-      template.source = 'platform/wp8/stub_impl/Montana_impl.cs'
-      template.destination = "platform/wp8/generated/stub_impl/#{$cur_module.name}_impl.cs"
+ # uwp
+    template :uwp_stub_impl_montana_impl do |template|
+      template.source = 'platform/uwp/stub_impl/Montana_impl.cs'
+      template.destination = "platform/uwp/generated/stub_impl/#{$cur_module.name}_impl.cs"
     end
 
-    template :wp8_montana_base_cs do |template|
-      template.source = 'platform/wp8/MontanaBase.cs'
-      template.destination = "platform/wp8/generated/#{$cur_module.name}Base.cs"
+    template :uwp_montana_base_cs do |template|
+      template.source = 'platform/uwp/MontanaBase.cs'
+      template.destination = "platform/uwp/generated/#{$cur_module.name}Base.cs"
     end
 
-    template :wp8_runtime_montana_runtime_h do |template|
-      template.source = 'platform/wp8/lib/MontanaRuntime.h'
-      template.destination = "platform/wp8/generated/lib/#{$cur_module.name}Runtime.h"
+    template :uwp_runtime_montana_runtime_h do |template|
+      template.source = 'platform/uwp/lib/MontanaRuntime.h'
+      template.destination = "platform/uwp/generated/lib/#{$cur_module.name}Runtime.h"
     end
 
-    template :wp8_runtime_montana_runtime_cpp do |template|
-      template.source = 'platform/wp8/lib/MontanaRuntime.cpp'
-      template.destination = "platform/wp8/generated/lib/#{$cur_module.name}Runtime.cpp"
+    template :uwp_runtime_montana_runtime_cpp do |template|
+      template.source = 'platform/uwp/lib/MontanaRuntime.cpp'
+      template.destination = "platform/uwp/generated/lib/#{$cur_module.name}Runtime.cpp"
     end
 
-    template :wp8_lib_montana_factory_h do |template|
-      template.source = 'platform/wp8/lib/MontanaFactory.h'
-      template.destination = "platform/wp8/generated/lib/#{$cur_module.name}Factory.h"
+    template :uwp_lib_montana_factory_h do |template|
+      template.source = 'platform/uwp/lib/MontanaFactory.h'
+      template.destination = "platform/uwp/generated/lib/#{$cur_module.name}Factory.h"
     end
 
-    template :wp8_lib_montana_impl do |template|
-      template.source = 'platform/wp8/lib/Montana_impl.cpp'
-      template.destination = "platform/wp8/generated/lib/#{$cur_module.name}_impl.cpp"
+    template :uwp_lib_montana_impl do |template|
+      template.source = 'platform/uwp/lib/Montana_impl.cpp'
+      template.destination = "platform/uwp/generated/lib/#{$cur_module.name}_impl.cpp"
     end
 
-    template :wp8_lib_montana_impl_h do |template|
-      template.source = 'platform/wp8/lib/Montana_impl.h'
-      template.destination = "platform/wp8/generated/lib/#{$cur_module.name}_impl.h"
+    template :uwp_lib_montana_impl_h do |template|
+      template.source = 'platform/uwp/lib/Montana_impl.h'
+      template.destination = "platform/uwp/generated/lib/#{$cur_module.name}_impl.h"
     end
 
 
@@ -1499,6 +1590,7 @@ module Rhogen
 
   add :app, RubyAppGenerator
   add :jsapp, JavascriptAppGenerator
+  add :nodejsapp, NodeJSAppGenerator
   add :model, RubyModelGenerator
   add :jsmodel, JavascriptModelGenerator
   add :spec, SpecGenerator
@@ -1510,6 +1602,14 @@ module Rhogen
 
 end
 
+# fix issue with Templater and Ruby >= 2.5
+# issue produced by extlib gem required by templater
+# extlib add to_hash method to Array class
+# Ruby >= 2.5 use it by unrecognized cause and destroy parameter when  OptionParser.parse!() called
+# so, solution is remove to_hash from Array because no code from Templater use this method
+class Array
+      remove_method :to_hash
+end
 
 =begin
 # Stub this method to force 1.8 compatibility (come on templater!)

@@ -1,18 +1,21 @@
 /*
- * $Id: ossl.h 26781 2010-02-28 02:56:26Z naruse $
  * 'OpenSSL for Ruby' project
  * Copyright (C) 2001-2002  Michal Rokos <m.rokos@sh.cvut.cz>
  * All rights reserved.
  */
 /*
- * This program is licenced under the same licence as Ruby.
+ * This program is licensed under the same licence as Ruby.
  * (See the file 'LICENCE'.)
  */
 #if !defined(_OSSL_H_)
 #define _OSSL_H_
 
-#if defined(WIN32) || defined (WINCE)
+//RHO
+//#include RUBY_EXTCONF_H
+#if (defined(WIN32) || defined (WINCE)) && !defined(OS_UWP)
 #include "windows/extconf.h"
+#elif defined(OS_UWP)
+#include "uwp\extconf.h"
 #elif defined(macintosh) || defined(__APPLE__) || defined(__APPLE_CC__)
 #include <TargetConditionals.h>
 
@@ -26,45 +29,16 @@
 #elif defined(ANDROID)
 #include "android/extconf.h"
 #endif
+//RHO
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
-
-#if 0
-  mOSSL = rb_define_module("OpenSSL");
-  mX509 = rb_define_module_under(mOSSL, "X509");
-#endif
-
-/*
-* OpenSSL has defined RFILE and Ruby has defined RFILE - so undef it!
-*/
-#if defined(RFILE) /*&& !defined(OSSL_DEBUG)*/
-#  undef RFILE
-#endif
+#include <assert.h>
+#include <errno.h>
 #include <ruby.h>
 #include <ruby/io.h>
-
-/*
- * Check the OpenSSL version
- * The only supported are:
- * 	OpenSSL >= 0.9.7
- */
+#include <ruby/thread.h>
 #include <openssl/opensslv.h>
-
-#ifdef HAVE_ASSERT_H
-#  include <assert.h>
-#else
-#  define assert(condition)
-#endif
-
-#if defined(_WIN32)
-#  define OSSL_NO_CONF_API 1
-#  include <winsock2.h>
-#endif
-#include <errno.h>
 #include <openssl/err.h>
-#include <openssl/asn1_mac.h>
+#include <openssl/asn1.h>
 #include <openssl/x509v3.h>
 #include <openssl/ssl.h>
 #include <openssl/pkcs12.h>
@@ -73,14 +47,11 @@ extern "C" {
 #include <openssl/rand.h>
 #include <openssl/conf.h>
 #include <openssl/conf_api.h>
-#undef X509_NAME
-#undef PKCS7_SIGNER_INFO
-#if defined(HAVE_OPENSSL_ENGINE_H) && defined(HAVE_ST_ENGINE)
-#  define OSSL_ENGINE_ENABLED
+#include <openssl/crypto.h>
+#if !defined(OPENSSL_NO_ENGINE)
 #  include <openssl/engine.h>
 #endif
-#if defined(HAVE_OPENSSL_OCSP_H)
-#  define OSSL_OCSP_ENABLED
+#if !defined(OPENSSL_NO_OCSP)
 #  include <openssl/ocsp.h>
 #endif
 
@@ -98,36 +69,24 @@ extern VALUE eOSSLError;
  * CheckTypes
  */
 #define OSSL_Check_Kind(obj, klass) do {\
-  if (!rb_obj_is_kind_of(obj, klass)) {\
-    ossl_raise(rb_eTypeError, "wrong argument (%s)! (Expected kind of %s)",\
-               rb_obj_classname(obj), rb_class2name(klass));\
+  if (!rb_obj_is_kind_of((obj), (klass))) {\
+    ossl_raise(rb_eTypeError, "wrong argument (%"PRIsVALUE")! (Expected kind of %"PRIsVALUE")",\
+               rb_obj_class(obj), (klass));\
   }\
 } while (0)
 
 #define OSSL_Check_Instance(obj, klass) do {\
-  if (!rb_obj_is_instance_of(obj, klass)) {\
-    ossl_raise(rb_eTypeError, "wrong argument (%s)! (Expected instance of %s)",\
-               rb_obj_classname(obj), rb_class2name(klass));\
+  if (!rb_obj_is_instance_of((obj), (klass))) {\
+    ossl_raise(rb_eTypeError, "wrong argument (%"PRIsVALUE")! (Expected instance of %"PRIsVALUE")",\
+               rb_obj_class(obj), (klass));\
   }\
 } while (0)
 
 #define OSSL_Check_Same_Class(obj1, obj2) do {\
-  if (!rb_obj_is_instance_of(obj1, rb_obj_class(obj2))) {\
+  if (!rb_obj_is_instance_of((obj1), rb_obj_class(obj2))) {\
     ossl_raise(rb_eTypeError, "wrong argument type");\
   }\
 } while (0)
-
-/*
- * Compatibility
- */
-#if OPENSSL_VERSION_NUMBER >= 0x10000000L
-#define STACK _STACK
-#endif
-
-/*
- * String to HEXString conversion
- */
-int string2hex(const unsigned char *, int, char **, int *);
 
 /*
  * Data Conversion
@@ -135,42 +94,50 @@ int string2hex(const unsigned char *, int, char **, int *);
 STACK_OF(X509) *ossl_x509_ary2sk0(VALUE);
 STACK_OF(X509) *ossl_x509_ary2sk(VALUE);
 STACK_OF(X509) *ossl_protect_x509_ary2sk(VALUE,int*);
-VALUE ossl_x509_sk2ary(STACK_OF(X509) *certs);
-VALUE ossl_x509crl_sk2ary(STACK_OF(X509_CRL) *crl);
+VALUE ossl_x509_sk2ary(const STACK_OF(X509) *certs);
+VALUE ossl_x509crl_sk2ary(const STACK_OF(X509_CRL) *crl);
+VALUE ossl_x509name_sk2ary(const STACK_OF(X509_NAME) *names);
 VALUE ossl_buf2str(char *buf, int len);
 #define ossl_str_adjust(str, p) \
 do{\
-    int len = RSTRING_LEN(str);\
-    int newlen = (p) - (unsigned char*)RSTRING_PTR(str);\
+    long len = RSTRING_LEN(str);\
+    long newlen = (long)((p) - (unsigned char*)RSTRING_PTR(str));\
     assert(newlen <= len);\
-    rb_str_set_len(str, newlen);\
+    rb_str_set_len((str), newlen);\
 }while(0)
+/*
+ * Convert binary string to hex string. The caller is responsible for
+ * ensuring out has (2 * len) bytes of capacity.
+ */
+void ossl_bin2hex(unsigned char *in, char *out, size_t len);
 
 /*
- * our default PEM callback
+ * Our default PEM callback
  */
+/* Convert the argument to String and validate the length. Note this may raise. */
+VALUE ossl_pem_passwd_value(VALUE);
+/* Can be casted to pem_password_cb. If a password (String) is passed as the
+ * "arbitrary data" (typically the last parameter of PEM_{read,write}_
+ * functions), uses the value. If not, but a block is given, yields to it.
+ * If not either, fallbacks to PEM_def_callback() which reads from stdin. */
 int ossl_pem_passwd_cb(char *, int, int, void *);
+
+/*
+ * Clear BIO* with this in PEM/DER fallback scenarios to avoid decoding
+ * errors piling up in OpenSSL::Errors
+ */
+#define OSSL_BIO_reset(bio) do { \
+    (void)BIO_reset((bio)); \
+    ossl_clear_error(); \
+} while (0)
 
 /*
  * ERRor messages
  */
 #define OSSL_ErrMsg() ERR_reason_error_string(ERR_get_error())
 NORETURN(void ossl_raise(VALUE, const char *, ...));
-VALUE ossl_exc_new(VALUE, const char *, ...);
-
-/*
- * Verify callback
- */
-extern int ossl_verify_cb_idx;
-
-struct ossl_verify_cb_args {
-    VALUE proc;
-    VALUE preverify_ok;
-    VALUE store_ctx;
-};
-
-VALUE ossl_call_verify_cb_proc(struct ossl_verify_cb_args *);
-int ossl_verify_cb(int, X509_STORE_CTX *);
+/* Clear OpenSSL error queue. If dOSSL is set, rb_warn() them. */
+void ossl_clear_error(void);
 
 /*
  * String to DER String
@@ -194,13 +161,13 @@ extern VALUE dOSSL;
 } while (0)
 
 #define OSSL_Warning(fmt, ...) do { \
-  OSSL_Debug(fmt, ##__VA_ARGS__); \
-  rb_warning(fmt, ##__VA_ARGS__); \
+  OSSL_Debug((fmt), ##__VA_ARGS__); \
+  rb_warning((fmt), ##__VA_ARGS__); \
 } while (0)
 
 #define OSSL_Warn(fmt, ...) do { \
-  OSSL_Debug(fmt, ##__VA_ARGS__); \
-  rb_warn(fmt, ##__VA_ARGS__); \
+  OSSL_Debug((fmt), ##__VA_ARGS__); \
+  rb_warn((fmt), ##__VA_ARGS__); \
 } while (0)
 #else
 void ossl_debug(const char *, ...);
@@ -235,9 +202,4 @@ void ossl_debug(const char *, ...);
 
 void Init_openssl(void);
 
-#if defined(__cplusplus)
-}
-#endif
-
 #endif /* _OSSL_H_ */
-

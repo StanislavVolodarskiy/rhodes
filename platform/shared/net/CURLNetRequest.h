@@ -38,7 +38,7 @@ namespace rho
 namespace net
 {
 
-class CURLNetRequest : public INetRequestImpl
+class CURLNetRequest : public CNetRequestBase
 {
     DEFINE_LOGCLASS;
     
@@ -51,6 +51,19 @@ class CURLNetRequest : public INetRequestImpl
         String  username;
         String  password;
     };
+
+    struct AuthSettings
+    {
+        AuthSettings( AuthMethod m, const String& u, const String& p )
+        : method(m)
+        , user(u)
+        , password(p)
+        {}
+
+        const AuthMethod method;
+        const String user;
+        const String password;
+    };
     
     class CURLHolder
     {
@@ -61,7 +74,7 @@ class CURLNetRequest : public INetRequestImpl
         CURL *curl() {return m_curl;}
         
         curl_slist *set_options(const char *method, const String& strUrl, const String& strBody,
-                                IRhoSession* pSession, Hashtable<String,String>* pHeaders, const ProxySettings& pProxySettings );
+                                IRhoSession* pSession, Hashtable<String,String>* pHeaders, const ProxySettings& pProxySettings, const AuthSettings& authSettings );
         CURLcode perform();
         
         void cancel() {deactivate();}
@@ -77,7 +90,11 @@ class CURLNetRequest : public INetRequestImpl
         CURL *m_curl;
         CURLM *m_curlm;
         char *errbuf[CURL_ERROR_SIZE];
+#ifdef mutexSmartPointer
+        mutexSmartPointer m_lock;
+#else
         common::CMutex m_lock;
+#endif
         int m_active;
         
         boolean m_bTraceCalls;
@@ -101,7 +118,7 @@ class CURLNetRequest : public INetRequestImpl
     };
     
 public:
-    CURLNetRequest() : m_pCallback(0) {}
+    CURLNetRequest() {}
     
     virtual INetResponse* doRequest( const char* method, const String& strUrl, const String& strBody, IRhoSession* oSession, Hashtable<String,String>* pHeaders );
     virtual INetResponse* pullFile(const String& strUrl, common::CRhoFile& oFile, IRhoSession* oSession, Hashtable<String,String>* pHeaders);
@@ -114,7 +131,6 @@ public:
 
     virtual INetResponse* createEmptyNetResponse();
     
-    virtual void setCallback(INetRequestCallback* callback) { m_pCallback = callback; }
 private:
     INetResponse* doPull(const char *method, const String &strUrl, const String &strBody, common::CRhoFile *oFile, IRhoSession *oSession, Hashtable<String,String>* pHeaders);
     int getResponseCode(CURLcode err, String const &body, IRhoSession* oSession);
@@ -131,7 +147,6 @@ private:
 
 
     CURLHolder m_curl;
-    INetRequestCallback* m_pCallback;
 };
 
 } // namespace net

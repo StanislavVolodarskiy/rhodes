@@ -185,6 +185,7 @@ namespace rhodes
 
         public MainPage()
         {
+            System.Diagnostics.Debug.WriteLine("UserAgent: " + getUserAgent());
             _instance = this;
             _uiThreadID = System.Threading.Thread.CurrentThread.ManagedThreadId;
             updateScreenSize();
@@ -652,7 +653,7 @@ namespace rhodes
             toolbarItems.Add(text, action);
             updateAppBarModeAndVisibility();
         }
-
+        
         public void toolbarAddSeparator()
         {
             if (!isUIThread) { Dispatcher.BeginInvoke(delegate() { toolbarAddSeparator(); }); return; }
