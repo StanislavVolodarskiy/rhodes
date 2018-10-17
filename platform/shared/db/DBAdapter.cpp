@@ -188,7 +188,7 @@ boolean CDBAdapter::checkDbError(int rc)
         return true;
 
     const char * szErrMsg = sqlite3_errmsg(m_dbHandle);
-    int nErrCode = sqlite3_errcode(m_dbHandle);
+    int nErrCode = sqlite3_extended_errcode(m_dbHandle);
 
     LOG(ERROR)+"DB query failed. Error code: " + nErrCode + "; Message: " + szErrMsg;
 
@@ -201,7 +201,7 @@ boolean CDBAdapter::checkDbErrorEx(int rc, rho::db::CDBResult& res)
         return true;
 
     const char * szErrMsg = sqlite3_errmsg(m_dbHandle);
-    int nErrCode = sqlite3_errcode(m_dbHandle);
+    int nErrCode = sqlite3_extended_errcode(m_dbHandle);
 
     res.getDBError().setError(nErrCode, szErrMsg);
     if ( nErrCode == SQLITE_CONSTRAINT && res.getReportNonUnique() )
